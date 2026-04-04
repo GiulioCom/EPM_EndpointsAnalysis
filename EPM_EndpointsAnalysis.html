@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EPM Agent Report Processor</title>
+    <style>
+        :root {
+            --primary: #2563eb;
+            --dark: #1e293b;
+            --light: #f8fafc;
+            --border: #e2e8f0;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--light);
+            color: var(--dark);
+            margin: 0;
+            padding: 2rem;
+        }
+
+        .header-section {
+            margin-bottom: 2rem;
+            border-bottom: 2px solid var(--primary);
+            padding-bottom: 1rem;
+        }
+
+        #reportTitle {
+            margin: 0;
+            color: var(--primary);
+            font-size: 1.5rem;
+        }
+
+        .upload-card {
+            background: white;
+            padding: 1.5rem;
+            border-radius: 8px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            margin-bottom: 2rem;
+        }
+
+        .table-container {
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.85rem;
+        }
+
+        th {
+            background-color: var(--dark);
+            color: white;
+            text-align: left;
+            padding: 12px;
+            position: sticky;
+            top: 0;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        td {
+            padding: 10px 12px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        tr:nth-child(even) { background-color: #fcfcfc; }
+        tr:hover { background-color: #f1f5f9; }
+
+        .status-badge {
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-weight: bold;
+            font-size: 0.75rem;
+        }
+        /* Style logic could be added here for 'Disconnected' vs 'Connected' */
+    </style>
+</head>
+<body>
+
+    <div class="header-section">
+        <h1 id="reportTitle">CSV Agent Processor</h1>
+        <p id="fileInfo">Ready to process local report...</p>
+    </div>
+
+    <div class="upload-card">
+        <input type="file" id="csvFileInput" accept=".csv">
+    </div>
+
+    <div class="table-container">
+        <table id="agentTable">
+            <thead id="thead"></thead>
+            <tbody id="tbody"></tbody>
+        </table>
+    </div>
+
+<script>
+/**
+ * Configuration: Columns we want to extract
+ */
+const TARGET_COLUMNS = [
+    "Agent Id", "Computer", "Agent Version", "Agent Status", 
+    "Installed On", "Last Policy Update", "Last Seen", 
+    "Logged In", "New Agent Id"
+];
+
+const fileInput = document.getElementById('csvFileInput');
+const reportTitle = document.getElementById('reportTitle');
+const thead = document.getElementById('thead');
+const tbody = document.getElementById('tbody');
+
+fileInput.addEventListener('change', function(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => processData(event.target.result);
+    reader.readAsText(file);
+});
+
+function processData(rawText) {
+    // Split lines and sanitize (remove empty lines)
+    const rows = rawText.split(/\r?\n/).map(line => line.split(',')).filter(row => row.length > 1);
+    
+    if (rows.length < 1) return;
+
+    const originalHeaders = rows[0].map(h => h.trim());
+    
+    // 1. Find indices for target columns
+    const colMap = TARGET_COLUMNS.map(target => ({
+        name: target,
+        index: originalHeaders.indexOf(target)
+    })).filter(col => col.index !== -1); // Only keep columns that actually exist
+
+    // 2. Find SetName index for the Title
+    const setNameIndex = originalHeaders.indexOf("SetName");
+    if (setNameIndex !== -1 && rows[1]) {
+        reportTitle.textContent = `Report: ${rows[1][setNameIndex]}`;
+    }
+
+    renderTable(colMap, rows.slice(1));
+}
+
+function renderTable(colMap, dataRows) {
+    // Clear UI
+    thead.innerHTML = '';
+    tbody.innerHTML = '';
+
+    // Render Headers
+    const headerRow = document.createElement('tr');
+    colMap.forEach(col => {
+        const th = document.createElement('th');
+        th.textContent = col.name;
+        headerRow.appendChild(th);
+    });
+    thead.appendChild(headerRow);
+
+    // Render Data with DocumentFragment for performance
+    const fragment = document.createDocumentFragment();
+    
+    dataRows.forEach(rowData => {
+        const tr = document.createElement('tr');
+        
+        colMap.forEach(col => {
+            const td = document.createElement('td');
+            // Security: Always textContent
+            td.textContent = rowData[col.index] || ''; 
+            tr.appendChild(td);
+        });
+        
+        fragment.appendChild(tr);
+    });
+
+    tbody.appendChild(fragment);
+}
+</script>
+</body>
+</html>
