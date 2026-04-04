@@ -14,6 +14,35 @@
 
         body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--light); margin: 0; color: var(--dark); }
         
+        /* Overlay loading */
+        #loader {
+            display: none; /* Nascosto di default */
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(255, 255, 255, 0.8);
+            z-index: 1000;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            color: var(--primary);
+        }
+
+        .spinner {
+            width: 40px;
+            height: 40px;
+            border: 4px solid var(--border);
+            border-top: 4px solid var(--primary);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-bottom: 10px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
         /* Navigation */
         .tab-nav { background: var(--dark); padding: 10px 20px 0 20px; display: flex; gap: 5px; position: sticky; top: 0; z-index: 100; }
         .tab-button { background: #1e293b; color: #94a3b8; border: none; padding: 12px 25px; border-radius: 8px 8px 0 0; cursor: pointer; font-weight: 600; transition: all 0.2s; }
@@ -84,6 +113,11 @@
     </style>
 </head>
 <body>
+
+<div id="loader">
+    <div class="spinner"></div>
+    <span>Processing CSV Data...</span>
+</div>
 
 <nav class="tab-nav">
     <button id="btn-endpoints" class="tab-button active" onclick="switchTab('endpoints')">Endpoints</button>
@@ -169,9 +203,9 @@ const RECON_COLS = ["Computer", "Agent Id", "New Agent Id", "Agent Version", "Ag
 
 let currentTab = 'endpoints';
 let STORES = {
-    endpoints: { raw: [], sortBy: null, sortAsc: true, groupBy: null, search: "", versions: [], vSort: 'count', vAsc: false, setName: "" },
-    mycomputers: { raw: [], sortBy: null, sortAsc: true, groupBy: null, search: "", versions: [], vSort: 'count', vAsc: false, setName: "" },
-    comparison: { raw: [], sortBy: null, sortAsc: true, groupBy: null, search: "", delta: [], dSort: 'diff', dAsc: false }
+    endpoints: { raw: [], sortBy: null, sortAsc: true, groupBy: null, search: "", versions: [], vSort: 'count', vAsc: false, setName: "", visibleCount: 100, activeFilter: null },
+    mycomputers: { raw: [], sortBy: null, sortAsc: true, groupBy: null, search: "", versions: [], vSort: 'count', vAsc: false, setName: "", visibleCount: 100, activeFilter: null },
+    comparison: { raw: [], sortBy: null, sortAsc: true, groupBy: null, search: "", delta: [], dSort: 'diff', dAsc: false, visibleCount: 100 }
 };
 
 // --- PARSER ---
@@ -250,31 +284,87 @@ function renderGeneralTable(tableId, headId, bodyId, storeId, columns) {
     const s = STORES[storeId];
     const head = document.getElementById(headId);
     const body = document.getElementById(bodyId);
-    if(!head || !body) return;
-    let data = [...s.raw];
-    if (s.search) {
-        const term = s.search.toLowerCase();
-        data = data.filter(r => Object.values(r).some(v => String(v).toLowerCase().includes(term)));
+    if (!body) return;
+
+    if (headId) {
+        let data = [...s.raw];
+        
+        if (s.search) {
+            const term = s.search.toLowerCase();
+            data = data.filter(r => Object.values(r).some(v => 
+                String(v).toLowerCase().includes(term)
+            ));
+        }
+
+        if (s.sortBy) {
+            data.sort((a, b) => {
+                let vA = a[s.sortBy], vB = b[s.sortBy];
+                if (String(s.sortBy).startsWith("Dup:")) {
+                    vA = vA === "no" ? 1 : parseInt(vA); 
+                    vB = vB === "no" ? 1 : parseInt(vB);
+                    return s.sortAsc ? vA - vB : vB - vA;
+                }
+                return s.sortAsc ? 
+                    String(vA).localeCompare(String(vB), undefined, {numeric: true}) : 
+                    String(vB).localeCompare(String(vA), undefined, {numeric: true});
+            });
+        }
+        
+        s.filtered = data;
+        body.innerHTML = "";
+        
+        if (head) {
+            head.innerHTML = columns.map(col => `
+                <th>
+                    <div class="header-inner">
+                        <span style="cursor:pointer" onclick="handleSort('${storeId}','${col}')">
+                            ${col} ${s.sortBy===col ? (s.sortAsc?'↑':'↓') : ''}
+                        </span>
+                        <button class="btn-group ${s.groupBy===col?'active':''}" onclick="handleGroup('${storeId}','${col}')">⊞</button>
+                    </div>
+                </th>`).join('');
+        }
+    } else {
+        if (body.lastElementChild) body.lastElementChild.remove();
     }
-    if (s.sortBy) {
-        data.sort((a, b) => {
-            let vA = a[s.sortBy], vB = b[s.sortBy];
-            if (String(s.sortBy).startsWith("Dup:")) {
-                vA = vA === "no" ? 1 : parseInt(vA); vB = vB === "no" ? 1 : parseInt(vB);
-                return s.sortAsc ? vA - vB : vB - vA;
-            }
-            return s.sortAsc ? String(vA).localeCompare(String(vB), undefined, {numeric: true}) : String(vB).localeCompare(String(vA), undefined, {numeric: true});
-        });
-    }
-    head.innerHTML = columns.map(col => `<th><div class="header-inner"><span style="cursor:pointer" onclick="handleSort('${storeId}','${col}')">${col} ${s.sortBy===col?(s.sortAsc?'↑':'↓'):''}</span><button class="btn-group ${s.groupBy===col?'active':''}" onclick="handleGroup('${storeId}','${col}')">⊞</button></div></th>`).join('');
-    body.innerHTML = "";
+
     if (s.groupBy) {
-        const grouped = data.reduce((acc, r) => { const k = r[s.groupBy] || "N/A"; if (!acc[k]) acc[k] = []; acc[k].push(r); return acc; }, {});
+        const grouped = s.filtered.reduce((acc, r) => { 
+            const k = r[s.groupBy] || "N/A"; 
+            if (!acc[k]) acc[k] = []; acc[k].push(r); return acc; 
+        }, {});
+        
+        body.innerHTML = "";
         Object.entries(grouped).forEach(([k, rows]) => {
             body.insertAdjacentHTML('beforeend', `<tr><td colspan="100%" class="row-group-head">${s.groupBy}: ${k} (${rows.length})</td></tr>`);
             rows.forEach(r => body.appendChild(createRow(r, columns)));
         });
-    } else data.forEach(r => body.appendChild(createRow(r, columns)));
+    } else {
+        const start = headId ? 0 : s.visibleCount - 100;
+        const chunk = s.filtered.slice(start, s.visibleCount);
+        
+        chunk.forEach(r => body.appendChild(createRow(r, columns)));
+
+        if (s.visibleCount < s.filtered.length) {
+            const sentinel = document.createElement('tr');
+            sentinel.style.background = "#f8fafc";
+            sentinel.innerHTML = `
+                <td colspan="${columns.length}" style="text-align:center; padding:20px; color:var(--primary); font-weight:bold; border-top:1px solid var(--border)">
+                    Loading more records (${s.visibleCount} / ${s.filtered.length})...
+                </td>`;
+            body.appendChild(sentinel);
+            
+            const observer = new IntersectionObserver((entries) => {
+                if (entries[0].isIntersecting) {
+                    s.visibleCount += 100;
+                    observer.disconnect();
+                    renderGeneralTable(null, null, bodyId, storeId, columns);
+                }
+            }, { threshold: 0.1, rootMargin: '100px' });
+            
+            observer.observe(sentinel);
+        }
+    }
 }
 
 function createRow(r, cols) {
@@ -385,16 +475,26 @@ window.sortVersions = (loc, key) => { const sid = (loc === 'local') ? currentTab
 window.sortVersionsDelta = (key) => { const c = STORES.comparison; if(c.dSort === key) c.dAsc = !c.dAsc; else { c.dSort = key; c.dAsc = (key === 'ver'); } calculateDelta(); };
 
 document.getElementById('csvFileInput').addEventListener('change', e => {
-    const file = e.target.files[0]; if(!file) return;
+    const file = e.target.files[0]; 
+    if(!file) return;
+
+    const loader = document.getElementById('loader');
+    loader.style.display = 'flex';
+
     const reader = new FileReader();
     reader.onload = ev => { 
-        const result = parseCSV(ev.target.result);
-        STORES[currentTab].raw = result.rows;
-        STORES[currentTab].setName = result.setName;
-        switchTab(currentTab); 
+        setTimeout(() => {
+            const result = parseCSV(ev.target.result);
+            STORES[currentTab].raw = result.rows;
+            STORES[currentTab].setName = result.setName;
+            switchTab(currentTab); 
+            loader.style.display = 'none';
+            e.target.value = ""; 
+        }, 50); 
     };
     reader.readAsText(file);
 });
+
 document.getElementById('searchInput').addEventListener('input', e => { STORES[currentTab].search = e.target.value; renderGeneralTable('mainDataTable', 'mainHead', 'mainBody', currentTab, COLUMNS); });
 document.getElementById('reconSearch').addEventListener('input', e => { STORES.comparison.search = e.target.value; renderGeneralTable('reconTable', 'reconHead', 'reconBody', 'comparison', RECON_COLS); });
 </script>
