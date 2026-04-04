@@ -76,24 +76,70 @@
         .stat-card { background: white; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); border-top: 4px solid var(--gray); font-size: 0.85rem; }
         .stat-card b { font-size: 1.1rem; display: block; margin-top: 5px; }
 
-        /* TABLE CONTAINERS (Uniformati al Delta) */
-        .table-container { 
-            background: white; 
-            border-radius: 8px; 
-            overflow: auto; 
-            border: 1px solid var(--border); 
-            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-        }
-        
-        /* Tables "Version" */
-        .v-table { width: 100%; border-collapse: collapse; }
-        .v-table .v-header-title { padding: 8px; font-weight: bold; background: #eff6ff; font-size: 0.75rem; border-bottom: 1px solid var(--border); color: var(--primary); }
-        .v-table th { 
-            background: #f8fafc; color: var(--gray); font-size: 0.7rem; 
-            text-transform: uppercase; letter-spacing: 0.05em; padding: 8px 10px;
-            border-bottom: 2px solid var(--border); cursor: pointer; text-align: left;
-        }
-        .v-table td { padding: 6px 10px; font-size: 0.8rem; border-bottom: 1px solid #f1f5f9; }
+    /* CONTAINER PRINCIPALE */
+    .table-container { 
+        background: white; 
+        border-radius: 8px; 
+        overflow: auto; 
+        border: 1px solid var(--border); 
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        max-height: 250px; /* Altezza come da tua specifica */
+        position: relative;
+    }
+
+    /* IL TITOLO (Il div blu chiaro fuori dalla tabella) */
+    .table-container > div:first-child { 
+        position: sticky;
+        top: 0;
+        z-index: 30; /* Più alto di tutti */
+        padding: 8px;
+        font-weight: bold;
+        background: #eff6ff;
+        font-size: 0.75rem;
+        border-bottom: 1px solid var(--border);
+        color: var(--primary);
+    }
+
+    /* LA TABELLA */
+    .v-table { 
+        width: 100%; 
+        border-collapse: separate; /* Cambiato in separate per far funzionare bene i bordi sticky */
+        border-spacing: 0;
+    }
+
+    /* INTESTAZIONI COLONNE (Versions / Qty) */
+    .v-table th { 
+        position: sticky;
+        top: 33px; /* Altezza del div del titolo (padding + font + bordi) */
+        z-index: 20;
+        background: #f8fafc; 
+        color: var(--gray); 
+        font-size: 0.7rem; 
+        text-transform: uppercase; 
+        letter-spacing: 0.05em; 
+        padding: 8px 10px;
+        border-bottom: 2px solid var(--border); 
+        cursor: pointer; 
+        text-align: left;
+    }
+
+    /* CELLE STANDARD */
+    .v-table td { 
+        padding: 6px 10px; 
+        font-size: 0.8rem; 
+        border-bottom: 1px solid #f1f5f9; 
+    }
+
+    /* FOOTER (Riga Summary) */
+    .ver-summary-row td {
+        position: sticky;
+        bottom: 0;
+        z-index: 20;
+        background: #fff1f2 !important; 
+        border-top: 2px solid var(--border);
+        font-weight: bold;
+        color: #991b1b;
+    }
 
         /* Main Device Tables */
         #mainDataTable, #reconTable { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
@@ -401,6 +447,22 @@ function createRow(r, cols) {
     return tr;
 }
 
+function getAgentStats(versionsArray) {
+    let total = 0;
+    let notReady = 0;
+
+    versionsArray.forEach(v => {
+        total += v.count;
+        if (getVersionStatusClass(v.ver) === 'ver-endpointsnotready') {
+            notReady += v.count;
+        }
+    });
+
+    const percent = total > 0 ? ((notReady / total) * 100).toFixed(1) : 0;
+    
+    return { total, notReady, percent };
+}
+
 function getVersionStatusClass(verString) {
     if (!verString || verString === "Unknown") return 'ver-endpointsnotready';
     
@@ -417,23 +479,38 @@ function calcVersions(sid) {
     s.raw.forEach(r => { const v = r["Agent Version"] || "Unknown"; map[v] = (map[v] || 0) + 1; });
     s.versions = Object.entries(map).map(([ver, count]) => ({ ver, count }));
     
+    const stats = getAgentStats(s.versions);
+    
     const target = (currentTab === sid) ? 'localVersionBody' : (sid==='endpoints'?'compVerEPBody':'compVerMCBody');
+    
+    const tbody = document.getElementById(target);
+    if(!tbody) return;
 
     const sorted = [...s.versions].sort((a,b) => 
         s.vSort === 'count' ? (s.vAsc ? a.count - b.count : b.count - a.count) : 
         (s.vAsc ? a.ver.localeCompare(b.ver, undefined, {numeric:true}) : b.ver.localeCompare(a.ver, undefined, {numeric:true}))
     );
 
-    const tbody = document.getElementById(target);
-    if(!tbody) return;
-
-    tbody.innerHTML = sorted.map(v => {
+    let html = sorted.map(v => {
         const rowClass = getVersionStatusClass(v.ver);
-        return `<tr class="${rowClass}">
-                    <td>${v.ver}</td>
-                    <td style="text-align:right"><b>${v.count}</b></td>
-                </tr>`;
+        return `
+            <tr class="${rowClass}">
+                <td>${v.ver}</td>
+                <td style="text-align:right"><b>${v.count}</b></td>
+            </tr>`;
     }).join('');
+
+    if (stats.notReady > 0) {
+        html += `
+            <tr class="ver-summary-row">
+                <td>To be updated:</td>
+                <td style="text-align:right">
+                    ${stats.notReady} <small>(${stats.percent}%)</small>
+                </td>
+            </tr>`;
+    }
+
+    tbody.innerHTML = html;
 }
 
 function calcDiffVersions() {
@@ -444,15 +521,17 @@ function calcDiffVersions() {
 
     c.delta = Array.from(allVers).map(ver => ({ ver, diff: (epMap[ver] || 0) - (mcMap[ver] || 0) }));
 
+    const deltaStats = getAgentStats(c.delta.map(d => ({ ver: d.ver, count: d.diff })));
+
+    const tbody = document.getElementById('compVerDeltaBody');
+    if(!tbody) return;
+
     const sorted = [...c.delta].sort((a,b) => 
         c.dSort === 'diff' ? (c.dAsc ? a.diff - b.diff : b.diff - a.diff) : 
         (c.dAsc ? a.ver.localeCompare(b.ver, undefined, {numeric:true}) : b.ver.localeCompare(a.ver, undefined, {numeric:true}))
     );
-
-    const tbody = document.getElementById('compVerDeltaBody');
-    if(!tbody) return;
     
-    tbody.innerHTML = sorted.map(v => {
+    let html = sorted.map(v => {
         const rowClass = getVersionStatusClass(v.ver);
         const deltaClass = v.diff > 0 ? 'delta-pos' : (v.diff < 0 ? 'delta-neg' : '');
         return `<tr class="${rowClass} ${deltaClass}">
@@ -460,6 +539,18 @@ function calcDiffVersions() {
                     <td style="text-align:right"><b>${v.diff > 0 ? '+' : ''}${v.diff}</b></td>
                 </tr>`;
     }).join('');
+
+    if (deltaStats.notReady !== 0) {
+        html += `
+            <tr class="ver-summary-row">
+                <td>To be updated:</td>
+                <td style="text-align:right">
+                    ${deltaStats.notReady} <small>(${deltaStats.percent}%)</small>
+                </td>
+            </tr>`;
+    }
+
+    tbody.innerHTML = html;
 }
 
 function switchTab(id) {
@@ -489,7 +580,6 @@ function switchTab(id) {
         document.getElementById('searchInput').value = s.search;
     }
 }
-
 
 // --- HANDLERS ---
 window.handleSort = (sid, col) => {
