@@ -85,7 +85,7 @@
             box-shadow: 0 2px 4px rgba(0,0,0,0.05);
         }
         
-        /* Tutte le tabelle "Version" devono avere lo stesso profilo */
+        /* Tables "Version" */
         .v-table { width: 100%; border-collapse: collapse; }
         .v-table .v-header-title { padding: 8px; font-weight: bold; background: #eff6ff; font-size: 0.75rem; border-bottom: 1px solid var(--border); color: var(--primary); }
         .v-table th { 
@@ -101,8 +101,8 @@
         #mainDataTable td, #reconTable td { padding: 8px 10px; border-bottom: 1px solid var(--border); white-space: nowrap; }
 
         /* Version Support Colors */
-        .ver-supported { background-color: #f0fdf4 !important; color: #166534; }
-        .ver-deprecated { background-color: #fef2f2 !important; color: #991b1b; }
+        .ver-endpointsready { background-color: #f0fdf4 !important; color: #166534; }
+        .ver-endpointsnotready { background-color: #fef2f2 !important; color: #991b1b; }
         
         /* Delta text colors */
         .delta-pos b { color: var(--info); }
@@ -147,11 +147,11 @@
     <div id="view-data" class="view-section active">
         <div class="dashboard-layout">
             <div class="stats-grid">
-                <div class="stat-card" style="border-top-color: var(--primary)">Total Records <b id="statTotal">0</b></div>
-                <div class="stat-card" style="border-top-color: var(--success)">Unique Hosts <b id="statUnique">0</b></div>
-                <div class="stat-card" onclick="toggleStatFilter('comp')" style="cursor:pointer">Duplicate by Computer <b id="statDupComp">0</b></div>
-                <div class="stat-card" onclick="toggleStatFilter('agent')" style="cursor:pointer">Duplicate by Agent ID <b id="statDupAgentId">0</b></div>
-                <div class="stat-card" onclick="toggleStatFilter('newagent')" style="cursor:pointer">Duplicate by New Agent ID <b id="statDupNewAgentId">0</b></div>
+                <div class="stat-card" style="border-top-color: var(--primary)">Total Records<b id="statTotal">0</b></div>
+                <div class="stat-card" style="border-top-color: var(--success)">Unique Hosts<b id="statUnique">0</b></div>
+                <div class="stat-card" onclick="toggleStatFilter('comp')" style="cursor:pointer">Duplicate by Computer<b id="statDupComp">0</b></div>
+                <div class="stat-card" onclick="toggleStatFilter('agent')" style="cursor:pointer">Duplicate by Agent ID<b id="statDupAgentId">0</b></div>
+                <div class="stat-card" onclick="toggleStatFilter('newagent')" style="cursor:pointer">Duplicate by New Agent ID<b id="statDupNewAgentId">0</b></div>
             </div>
             
             <div class="table-container" style="max-height: 250px; border-top: 4px solid var(--info);">
@@ -401,26 +401,34 @@ function createRow(r, cols) {
     return tr;
 }
 
-function refreshVersions(sid) {
+function getVersionStatusClass(verString) {
+    if (!verString || verString === "Unknown") return 'ver-endpointsnotready';
+    
+    const parts = verString.split('.').map(Number);
+    const major = parts[0] || 0;
+    const minor = parts[1] || 0;
+    const isReady = (major > 25) || (major === 25 && minor >= 12);
+    return isReady ? 'ver-endpointsready' : 'ver-endpointsnotready';
+}
+
+function calcVersions(sid) {
     const s = STORES[sid];
     const map = {};
     s.raw.forEach(r => { const v = r["Agent Version"] || "Unknown"; map[v] = (map[v] || 0) + 1; });
     s.versions = Object.entries(map).map(([ver, count]) => ({ ver, count }));
     
     const target = (currentTab === sid) ? 'localVersionBody' : (sid==='endpoints'?'compVerEPBody':'compVerMCBody');
-    const tbody = document.getElementById(target);
-    if(!tbody) return;
 
     const sorted = [...s.versions].sort((a,b) => 
         s.vSort === 'count' ? (s.vAsc ? a.count - b.count : b.count - a.count) : 
         (s.vAsc ? a.ver.localeCompare(b.ver, undefined, {numeric:true}) : b.ver.localeCompare(a.ver, undefined, {numeric:true}))
     );
 
+    const tbody = document.getElementById(target);
+    if(!tbody) return;
+
     tbody.innerHTML = sorted.map(v => {
-        const vNum = parseFloat(v.ver);
-        const isSupported = !isNaN(vNum) && vNum >= 25.12;
-        const rowClass = isSupported ? 'ver-supported' : 'ver-deprecated';
-        
+        const rowClass = getVersionStatusClass(v.ver);
         return `<tr class="${rowClass}">
                     <td>${v.ver}</td>
                     <td style="text-align:right"><b>${v.count}</b></td>
@@ -428,28 +436,25 @@ function refreshVersions(sid) {
     }).join('');
 }
 
-function calculateDelta() {
+function calcDiffVersions() {
     const ep = STORES.endpoints, mc = STORES.mycomputers, c = STORES.comparison;
     const allVers = new Set([...ep.versions.map(v=>v.ver), ...mc.versions.map(v=>v.ver)]);
     const epMap = Object.fromEntries(ep.versions.map(v => [v.ver, v.count]));
     const mcMap = Object.fromEntries(mc.versions.map(v => [v.ver, v.count]));
 
-    c.delta = Array.from(allVers).map(ver => ({ 
-        ver, 
-        diff: (epMap[ver] || 0) - (mcMap[ver] || 0) 
-    }));
+    c.delta = Array.from(allVers).map(ver => ({ ver, diff: (epMap[ver] || 0) - (mcMap[ver] || 0) }));
 
     const sorted = [...c.delta].sort((a,b) => 
         c.dSort === 'diff' ? (c.dAsc ? a.diff - b.diff : b.diff - a.diff) : 
         (c.dAsc ? a.ver.localeCompare(b.ver, undefined, {numeric:true}) : b.ver.localeCompare(a.ver, undefined, {numeric:true}))
     );
 
-    document.getElementById('compVerDeltaBody').innerHTML = sorted.map(v => {
-        const vNum = parseFloat(v.ver);
-        const isSupported = !isNaN(vNum) && vNum >= 25.12;
-        const rowClass = isSupported ? 'ver-supported' : 'ver-deprecated';
+    const tbody = document.getElementById('compVerDeltaBody');
+    if(!tbody) return;
+    
+    tbody.innerHTML = sorted.map(v => {
+        const rowClass = getVersionStatusClass(v.ver);
         const deltaClass = v.diff > 0 ? 'delta-pos' : (v.diff < 0 ? 'delta-neg' : '');
-
         return `<tr class="${rowClass} ${deltaClass}">
                     <td>${v.ver}</td>
                     <td style="text-align:right"><b>${v.diff > 0 ? '+' : ''}${v.diff}</b></td>
@@ -470,7 +475,7 @@ function switchTab(id) {
         document.getElementById('compDeltaUnique').textContent = mcSet.size - epSet.size;
         c.raw = [...mc.raw.filter(r => !epSet.has(r.Computer)).map(r => ({...r, _srcClass: 'row-mc-only'})), ...ep.raw.filter(r => !mcSet.has(r.Computer)).map(r => ({...r, _srcClass: 'row-ep-only'}))];
         document.getElementById('compDiscCount').textContent = c.raw.length;
-        refreshVersions('endpoints'); refreshVersions('mycomputers'); calculateDelta();
+        calcVersions('endpoints'); calcVersions('mycomputers'); calcDiffVersions();
         renderGeneralTable('reconTable', 'reconHead', 'reconBody', 'comparison', RECON_COLS);
     } else {
         const s = STORES[id];
@@ -480,7 +485,7 @@ function switchTab(id) {
         document.getElementById('statDupComp').textContent = getDups('Computer');
         document.getElementById('statDupAgentId').textContent = getDups('Agent Id');
         document.getElementById('statDupNewAgentId').textContent = getDups('New Agent Id');
-        refreshVersions(id); renderGeneralTable('mainDataTable', 'mainHead', 'mainBody', id, COLUMNS);
+        calcVersions(id); renderGeneralTable('mainDataTable', 'mainHead', 'mainBody', id, COLUMNS);
         document.getElementById('searchInput').value = s.search;
     }
 }
@@ -505,14 +510,14 @@ window.sortVersions = (loc, key) => {
     const sid = (loc === 'local') ? currentTab : (loc === 'ep' ? 'endpoints' : 'mycomputers');
     const s = STORES[sid]; if(s.vSort === key) s.vAsc = !s.vAsc;
     else s.vSort = key; s.vAsc = (key === 'ver');
-    refreshVersions(sid);
+    calcVersions(sid);
 };
 
 window.sortVersionsDelta = (key) => {
     const c = STORES.comparison;
     if(c.dSort === key) c.dAsc = !c.dAsc;
     else c.dSort = key; c.dAsc = (key === 'ver');
-    calculateDelta();
+    calcDiffVersions();
 };
 
 window.toggleStatFilter = (type) => {
