@@ -3,109 +3,171 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>EPM Architect - Asset & Version Intelligence</title>
+    <title>EPM Architect - Professional Validator</title>
     <style>
         :root {
             --primary: #2563eb; --dark: #0f172a; --light: #f1f5f9; --white: #ffffff;
             --border: #e2e8f0; --success: #22c55e; --danger: #ef4444; --gray: #94a3b8;
-            --info: #3b82f6;
+            --info: #3b82f6; --warning: #f59e0b;
         }
 
         body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--light); margin: 0; padding: 0; color: var(--dark); }
-        .tab-nav { background: var(--dark); padding: 10px 20px 0 20px; display: flex; gap: 5px; }
+        
+        /* Navigation Tabs */
+        .tab-nav { background: var(--dark); padding: 10px 20px 0 20px; display: flex; gap: 5px; position: sticky; top: 0; z-index: 100; }
         .tab-button { 
-            background: #1e293b; color: #94a3b8; border: none; padding: 10px 25px; 
+            background: #1e293b; color: #94a3b8; border: none; padding: 12px 25px; 
             border-radius: 8px 8px 0 0; cursor: pointer; font-weight: 600; transition: 0.2s;
         }
         .tab-button:hover { background: #334155; color: white; }
-        .tab-button.active { background: var(--white); color: var(--primary); }
+        .tab-button.active { background: var(--white) !important; color: var(--primary) !important; }
 
         .main-content { padding: 20px; max-width: 1700px; margin: 0 auto; }
+        .view-section { display: none; }
+        .view-section.active { display: block; }
+
+        /* Dashboard & Stats */
         .dashboard-layout { display: grid; grid-template-columns: 2fr 1fr; gap: 20px; margin-bottom: 20px; }
         .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; }
         .stat-card { background: white; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); border-top: 4px solid var(--gray); }
         .stat-card.primary { border-top-color: var(--primary); }
         .stat-card.warning { border-top-color: var(--danger); }
         .stat-card.success { border-top-color: var(--success); }
+        .stat-card.delta { border-top-color: var(--warning); }
         .stat-label { font-size: 0.65rem; color: var(--gray); text-transform: uppercase; font-weight: bold; }
         .stat-value { font-size: 1.3rem; font-weight: 800; margin-top: 5px; }
 
-        .version-card { background: white; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); padding: 15px; border-top: 4px solid var(--info); max-height: 180px; overflow-y: auto; }
+        /* Unified Version Table Style */
+        .version-card { background: white; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); padding: 15px; border-top: 4px solid var(--info); max-height: 350px; display: flex; flex-direction: column; }
+        .version-table-container { overflow-y: auto; flex-grow: 1; margin-top: 10px; }
         .version-table { width: 100%; border-collapse: collapse; font-size: 0.75rem; }
-        .version-table td { padding: 4px; border-bottom: 1px solid #f1f1f1; }
+        .version-table th { 
+            text-align: left; background: #f8fafc; padding: 8px; border-bottom: 2px solid var(--border); 
+            cursor: pointer; position: sticky; top: 0; z-index: 5; color: var(--gray);
+        }
+        .version-table th:hover { color: var(--primary); }
+        .version-table td { padding: 6px 8px; border-bottom: 1px solid #f1f1f1; }
         .v-count { background: #f1f5f9; padding: 2px 6px; border-radius: 4px; font-weight: bold; color: var(--primary); }
 
+        /* Main Table Styles */
         .toolbar { background: white; padding: 15px; border-radius: 8px; display: flex; gap: 15px; align-items: center; margin-bottom: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
         .search-input { padding: 8px 12px; border: 1px solid var(--border); border-radius: 6px; width: 300px; outline: none; }
-
         .table-wrapper { background: white; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); overflow: auto; max-height: 55vh; }
-        table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
-        th { background: var(--dark); color: white; padding: 12px 10px; text-align: left; position: sticky; top: 0; z-index: 10; }
-        .header-content { display: flex; align-items: center; justify-content: space-between; }
-        .col-label { cursor: pointer; flex-grow: 1; }
-        .btn-group { background: none; border: none; color: #64748b; cursor: pointer; font-size: 1rem; padding: 2px 5px; }
+        
+        table.main-data-table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
+        table.main-data-table th { background: var(--dark); color: white; padding: 12px 10px; text-align: left; position: sticky; top: 0; z-index: 10; }
+        
+        /* FIX: Button Group Background */
+        .btn-group { background: var(--dark); border: none; color: #64748b; cursor: pointer; font-size: 1rem; padding: 2px 5px; border-radius: 4px; }
+        .btn-group:hover { color: white; }
         .btn-group.active { color: #60a5fa; font-weight: bold; }
         
+        .header-content { display: flex; align-items: center; justify-content: space-between; }
         td { padding: 8px 10px; border-bottom: 1px solid var(--border); white-space: nowrap; }
         .badge { padding: 3px 8px; border-radius: 12px; font-weight: bold; font-size: 0.7rem; color: white; display: inline-block; min-width: 65px; text-align: center; }
         .bg-valid { background-color: var(--success); }
         .bg-old { background-color: var(--danger); }
         .bg-nodate { background-color: var(--gray); }
         .row-group-head { background: #f8fafc; font-weight: bold; color: var(--primary); border-left: 5px solid var(--primary); }
+        .neg-delta { color: var(--danger); }
+        .pos-delta { color: var(--success); }
     </style>
 </head>
 <body>
 
 <nav class="tab-nav">
-    <button id="btn-endpoints" class="tab-button active" onclick="switchTab('endpoints')">Endpoints</button>
-    <button id="btn-mycomputers" class="tab-button" onclick="switchTab('mycomputers')">MyComputer</button>
+    <button id="tab-endpoints" class="tab-button active" onclick="switchTab('endpoints')">Endpoints</button>
+    <button id="tab-mycomputers" class="tab-button" onclick="switchTab('mycomputers')">MyComputer</button>
+    <button id="tab-comparison" class="tab-button" onclick="switchTab('comparison')">Comparison View</button>
 </nav>
 
 <div class="main-content">
-    <div class="toolbar">
-        <input type="file" id="csvFileInput" accept=".csv">
-        <input type="text" id="searchInput" class="search-input" placeholder="Filter current view...">
-        <h2 id="reportTitle" style="margin:0 0 0 auto; font-size: 1rem; color: var(--gray);">No file loaded</h2>
+    
+    <div id="view-data" class="view-section active">
+        <div class="toolbar">
+            <input type="file" id="csvFileInput" accept=".csv">
+            <input type="text" id="searchInput" class="search-input" placeholder="Search current list...">
+            <h2 id="reportTitle" style="margin:0 0 0 auto; font-size: 1rem; color: var(--gray);">No file loaded</h2>
+        </div>
+
+        <div class="dashboard-layout">
+            <div class="stats-grid">
+                <div class="stat-card primary"><div class="stat-label">Total Records</div><div class="stat-value" id="statTotal">0</div></div>
+                <div class="stat-card success"><div class="stat-label">Unique Hostnames</div><div class="stat-value" id="statUnique">0</div></div>
+                <div class="stat-card warning"><div class="stat-label">Dup: Computers</div><div class="stat-value" id="statDupComp">0</div></div>
+                <div class="stat-card warning"><div class="stat-label">Dup: Agent IDs</div><div class="stat-value" id="statDupAgent">0</div></div>
+                <div class="stat-card warning"><div class="stat-label">Dup: New Agent IDs</div><div class="stat-value" id="statDupNewAgent">0</div></div>
+            </div>
+            
+            <div class="version-card">
+                <div class="stat-label">Version Distribution</div>
+                <div class="version-table-container">
+                    <table class="version-table">
+                        <thead>
+                            <tr>
+                                <th onclick="sortVersionData('ver')">Version ↕</th>
+                                <th onclick="sortVersionData('count')" style="text-align:right">Count ↕</th>
+                            </tr>
+                        </thead>
+                        <tbody id="versionStatBody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <div class="table-wrapper">
+            <table class="main-data-table"><thead><tr id="headRow"></tr></thead><tbody id="tableBody"></tbody></table>
+        </div>
     </div>
 
-    <div class="dashboard-layout">
-        <div class="stats-grid">
-            <div class="stat-card primary"><div class="stat-label">Total Records</div><div class="stat-value" id="statTotal">0</div></div>
-            <div class="stat-card success"><div class="stat-label">Unique Hostnames</div><div class="stat-value" id="statUnique">0</div></div>
-            <div class="stat-card warning"><div class="stat-label">Dup: Computers</div><div class="stat-value" id="statDupComp">0</div></div>
-            <div class="stat-card warning"><div class="stat-label">Dup: Agent IDs</div><div class="stat-value" id="statDupAgent">0</div></div>
-            <div class="stat-card warning"><div class="stat-label">Dup: New Agent IDs</div><div class="stat-value" id="statDupNewAgent">0</div></div>
+    <div id="view-comparison" class="view-section">
+        <div class="stats-grid" style="grid-template-columns: 1fr 1fr; margin-bottom: 20px;">
+            <div class="stat-card delta">
+                <div class="stat-label">Delta: Total Records (MC - EP)</div>
+                <div class="stat-value" id="compDeltaTotal">0</div>
+                <div id="compTextTotal" style="font-size: 0.75rem; margin-top:5px; color: var(--gray);"></div>
+            </div>
+            <div class="stat-card delta">
+                <div class="stat-label">Delta: Unique Hostnames (MC - EP)</div>
+                <div class="stat-value" id="compDeltaUnique">0</div>
+                <div id="compTextUnique" style="font-size: 0.75rem; margin-top:5px; color: var(--gray);"></div>
+            </div>
         </div>
-        <div class="version-card">
-            <div class="stat-label" style="margin-bottom: 8px;">Version Distribution</div>
-            <table class="version-table"><tbody id="versionStatBody"></tbody></table>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+            <div class="version-card">
+                <div class="stat-label" style="color: var(--primary);">Endpoints Versions</div>
+                <div class="version-table-container">
+                    <table class="version-table">
+                        <thead><tr><th onclick="sortCompVer('ep', 'ver')">Version ↕</th><th onclick="sortCompVer('ep', 'count')" style="text-align:right">Count ↕</th></tr></thead>
+                        <tbody id="compVerEPBody"></tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="version-card">
+                <div class="stat-label" style="color: var(--warning);">MyComputer Versions</div>
+                <div class="version-table-container">
+                    <table class="version-table">
+                        <thead><tr><th onclick="sortCompVer('mc', 'ver')">Version ↕</th><th onclick="sortCompVer('mc', 'count')" style="text-align:right">Count ↕</th></tr></thead>
+                        <tbody id="compVerMCBody"></tbody>
+                    </table>
+                </div>
+            </div>
         </div>
     </div>
 
-    <div class="table-wrapper">
-        <table id="mainTable">
-            <thead><tr id="headRow"></tr></thead>
-            <tbody id="tableBody"></tbody>
-        </table>
-    </div>
 </div>
 
 <script>
-/**
- * CONSTANTS & CONFIG
+/** * STATE MANAGEMENT
  */
 const EXCLUDED_GUID = "00000000-0000-0000-0000-000000000000";
-const ENTITIES = [
-    { label: "Computer", csv: "Computer", virtual: "Dup:Computer" },
-    { label: "Agent Id", csv: "Agent Id", virtual: "Dup:AgentId" },
-    { label: "New Agent Id", csv: "New Agent Id", virtual: "Dup:NewAgentId" }
-];
 const COLUMNS = ["Dup:Computer", "Dup:AgentId", "Dup:NewAgentId", "Computer", "Agent Id", "New Agent Id", "Agent Version", "Agent Status", "Last Seen", "Logged In"];
 
 let currentTab = 'endpoints';
 let STORES = {
-    endpoints: { raw: [], sortBy: null, sortAsc: true, groupBy: null, search: "" },
-    mycomputers: { raw: [], sortBy: null, sortAsc: true, groupBy: null, search: "" }
+    endpoints: { raw: [], sortBy: null, sortAsc: true, groupBy: null, search: "", versions: [], vSort: 'count', vAsc: false },
+    mycomputers: { raw: [], sortBy: null, sortAsc: true, groupBy: null, search: "", versions: [], vSort: 'count', vAsc: false }
 };
 
 const elements = {
@@ -117,7 +179,7 @@ const elements = {
     vTbody: document.getElementById('versionStatBody')
 };
 
-// Listeners
+// --- HANDLERS ---
 elements.file.addEventListener('change', e => {
     const file = e.target.files[0];
     if (!file) return;
@@ -136,65 +198,61 @@ elements.search.addEventListener('input', e => {
 
 function switchTab(tabId) {
     currentTab = tabId;
+    
+    // UI Update
     document.querySelectorAll('.tab-button').forEach(btn => btn.classList.remove('active'));
-    document.getElementById('btn-' + tabId).classList.add('active');
-    elements.search.value = STORES[currentTab].search;
-    renderAll();
+    document.getElementById('tab-' + tabId).classList.add('active');
+    
+    document.getElementById('view-data').classList.toggle('active', tabId !== 'comparison');
+    document.getElementById('view-comparison').classList.toggle('active', tabId === 'comparison');
+
+    if (tabId === 'comparison') renderComparison();
+    else renderAll();
 }
 
 function parseCSV(text) {
     const lines = text.split(/\r?\n/).filter(l => l.trim() !== "");
     if (lines.length < 2) return [];
-    
     const headers = lines[0].split(',').map(h => h.trim());
     const csvKeys = ["Computer", "Agent Id", "New Agent Id", "Agent Version", "Agent Status", "Last Seen", "Logged In"];
     const colMap = csvKeys.map(k => ({ k, idx: headers.indexOf(k) })).filter(x => x.idx !== -1);
 
     const groups = { "Computer": {}, "Agent Id": {}, "New Agent Id": {} };
-    
     const rows = lines.slice(1).map(line => {
         const cells = line.split(',');
         const row = {};
         colMap.forEach(c => row[c.k] = cells[c.idx]?.trim() || "");
-        
-        ENTITIES.forEach(e => {
-            const val = row[e.csv];
-            // SPECIAL LOGIC: Se è il GUID nullo, non raggruppare (trattalo come unico)
+        ["Computer", "Agent Id", "New Agent Id"].forEach(k => {
+            const val = row[k];
             if (val && val !== EXCLUDED_GUID) {
-                if (!groups[e.csv][val]) groups[e.csv][val] = [];
-                groups[e.csv][val].push(row);
+                if (!groups[k][val]) groups[k][val] = [];
+                groups[k][val].push(row);
             }
         });
         return row;
     });
 
-    // Election Logic
     const winners = { "Computer": new Set(), "Agent Id": new Set(), "New Agent Id": new Set() };
-    Object.keys(groups).forEach(key => {
-        Object.values(groups[key]).forEach(grp => {
+    Object.keys(groups).forEach(k => {
+        Object.values(groups[k]).forEach(grp => {
             let win = null; let max = -1;
             grp.forEach(r => {
                 const t = r["Last Seen"] ? new Date(r["Last Seen"]).getTime() : -1;
                 if (t > max) { max = t; win = r; }
             });
-            if (win) winners[key].add(win);
+            if (win) winners[k].add(win);
         });
     });
 
-    // Final Enrichment
     return rows.map(r => {
-        ENTITIES.forEach(e => {
-            const val = r[e.csv];
-            // Se è il GUID escluso, forza lo stato a "no duplicate"
-            if (val === EXCLUDED_GUID && e.csv === "New Agent Id") {
-                r[e.virtual] = "no";
-                r["_" + e.virtual + "_state"] = "single";
+        ["Computer", "Agent Id", "New Agent Id"].forEach(k => {
+            const vKey = "Dup:" + k.replace(" ", "");
+            if (k === "New Agent Id" && r[k] === EXCLUDED_GUID) {
+                r[vKey] = "no"; r["_" + vKey + "_state"] = "single";
             } else {
-                const grp = (val && groups[e.csv][val]) ? groups[e.csv][val] : [r];
-                r[e.virtual] = grp.length === 1 ? "no" : grp.length;
-                r["_" + e.virtual + "_state"] = grp.length === 1 ? "single" : 
-                                                (!r["Last Seen"] ? "nodate" : 
-                                                (winners[e.csv].has(r) ? "recent" : "old"));
+                const grp = groups[k][r[k]] || [r];
+                r[vKey] = grp.length === 1 ? "no" : grp.length;
+                r["_" + vKey + "_state"] = grp.length === 1 ? "single" : (!r["Last Seen"] ? "nodate" : (winners[k].has(r) ? "recent" : "old"));
             }
         });
         return r;
@@ -202,52 +260,105 @@ function parseCSV(text) {
 }
 
 function renderAll() {
-    const store = STORES[currentTab];
-    let data = store.raw.filter(r => Object.values(r).some(v => String(v).toLowerCase().includes(store.search)));
-
-    updateStats(data);
-
-    if (store.sortBy) {
+    const s = STORES[currentTab];
+    if(!s) return;
+    let data = s.raw.filter(r => Object.values(r).some(v => String(v).toLowerCase().includes(s.search)));
+    
+    // Stats Update
+    updateStoreStats(s, data);
+    
+    // Main Sort
+    if (s.sortBy) {
         data.sort((a, b) => {
-            let vA = a[store.sortBy], vB = b[store.sortBy];
-            if (String(store.sortBy).startsWith("Dup:")) {
-                vA = vA === "no" ? 1 : parseInt(vA);
-                vB = vB === "no" ? 1 : parseInt(vB);
-                return store.sortAsc ? vA - vB : vB - vA;
+            let vA = a[s.sortBy], vB = b[s.sortBy];
+            if (String(s.sortBy).startsWith("Dup:")) {
+                vA = vA === "no" ? 1 : parseInt(vA); vB = vB === "no" ? 1 : parseInt(vB);
+                return s.sortAsc ? vA - vB : vB - vA;
             }
-            return store.sortAsc ? String(vA).localeCompare(String(vB), undefined, {numeric: true}) : String(vB).localeCompare(String(vA), undefined, {numeric: true});
+            return s.sortAsc ? String(vA).localeCompare(String(vB), undefined, {numeric: true}) : String(vB).localeCompare(String(vA), undefined, {numeric: true});
         });
     }
 
-    elements.thead.innerHTML = COLUMNS.map(col => `
-        <th><div class="header-content">
-            <span class="col-label" onclick="handleSort('${col}')">${col}${store.sortBy === col ? (store.sortAsc ? ' ↑' : ' ↓') : ''}</span>
-            <button class="btn-group ${store.groupBy === col ? 'active' : ''}" onclick="handleGroup('${col}')">⊞</button>
-        </div></th>`).join('');
-
+    elements.thead.innerHTML = COLUMNS.map(col => `<th><div class="header-content"><span class="col-label" onclick="handleSort('${col}')">${col}${s.sortBy === col ? (s.sortAsc ? ' ↑' : ' ↓') : ''}</span><button class="btn-group ${s.groupBy === col ? 'active' : ''}" onclick="handleGroup('${col}')">⊞</button></div></th>`).join('');
     elements.tbody.innerHTML = "";
+    
     const frag = document.createDocumentFragment();
-
-    if (store.groupBy) {
-        const grouped = data.reduce((acc, r) => {
-            const k = r[store.groupBy] || "N/A";
-            if (!acc[k]) acc[k] = [];
-            acc[k].push(r);
-            return acc;
-        }, {});
+    if (s.groupBy) {
+        const grouped = data.reduce((acc, r) => { const k = r[s.groupBy] || "N/A"; if (!acc[k]) acc[k] = []; acc[k].push(r); return acc; }, {});
         for (const [k, rows] of Object.entries(grouped)) {
-            const gTr = document.createElement('tr');
-            gTr.className = 'row-group-head';
-            gTr.innerHTML = `<td colspan="100%">${store.groupBy}: ${k} (${rows.length})</td>`;
+            const gTr = document.createElement('tr'); gTr.className = 'row-group-head';
+            gTr.innerHTML = `<td colspan="100%">${s.groupBy}: ${k} (${rows.length})</td>`;
             frag.appendChild(gTr);
             rows.forEach(r => frag.appendChild(createRow(r)));
         }
-    } else {
-        data.forEach(r => frag.appendChild(createRow(r)));
-    }
+    } else { data.forEach(r => frag.appendChild(createRow(r))); }
     elements.tbody.appendChild(frag);
-    elements.title.textContent = store.raw.length > 0 ? `Active Tab: ${currentTab.toUpperCase()}` : "No file loaded";
+    
+    renderVersionTable('versionStatBody', s.versions, s.vSort, s.vAsc);
+    elements.title.textContent = s.raw.length > 0 ? `Active: ${currentTab.toUpperCase()}` : "Load a CSV file";
 }
+
+function updateStoreStats(store, data) {
+    const vMap = {};
+    const grps = { Comp: {}, Aid: {}, NAid: {} };
+    const hosts = new Set();
+
+    data.forEach(r => {
+        if(r.Computer) { hosts.add(r.Computer); grps.Comp[r.Computer] = (grps.Comp[r.Computer] || 0) + 1; }
+        if(r["Agent Id"]) grps.Aid[r["Agent Id"]] = (grps.Aid[r["Agent Id"]] || 0) + 1;
+        if(r["New Agent Id"] && r["New Agent Id"] !== EXCLUDED_GUID) grps.NAid[r["New Agent Id"]] = (grps.NAid[r["New Agent Id"]] || 0) + 1;
+        const v = r["Agent Version"] || "Unknown";
+        vMap[v] = (vMap[v] || 0) + 1;
+    });
+
+    store.uniqueCount = hosts.size;
+    store.versions = Object.entries(vMap).map(([ver, count]) => ({ ver, count }));
+    
+    document.getElementById('statTotal').textContent = data.length;
+    document.getElementById('statUnique').textContent = hosts.size;
+    document.getElementById('statDupComp').textContent = Object.values(grps.Comp).filter(v => v > 1).length;
+    document.getElementById('statDupAgent').textContent = Object.values(grps.Aid).filter(v => v > 1).length;
+    document.getElementById('statDupNewAgent').textContent = Object.values(grps.NAid).filter(v => v > 1).length;
+}
+
+function renderVersionTable(targetId, data, sortKey, asc) {
+    const sorted = [...data].sort((a,b) => {
+        if(sortKey === 'count') return asc ? a.count - b.count : b.count - a.count;
+        return asc ? a.ver.localeCompare(b.ver, undefined, {numeric: true}) : b.ver.localeCompare(a.ver, undefined, {numeric: true});
+    });
+    document.getElementById(targetId).innerHTML = sorted.map(i => `<tr><td>${i.ver}</td><td style="text-align:right"><span class="v-count">${i.count}</span></td></tr>`).join('');
+}
+
+function renderComparison() {
+    const ep = STORES.endpoints; const mc = STORES.mycomputers;
+    const deltaTotal = mc.raw.length - ep.raw.length;
+    const deltaUnique = (mc.uniqueCount || 0) - (ep.uniqueCount || 0);
+
+    const fmt = (val) => `<span class="${val > 0 ? 'pos-delta' : (val < 0 ? 'neg-delta' : '')}">${val > 0 ? '+' : ''}${val}</span>`;
+    document.getElementById('compDeltaTotal').innerHTML = fmt(deltaTotal);
+    document.getElementById('compTextTotal').textContent = `MyComputer (${mc.raw.length}) vs Endpoints (${ep.raw.length})`;
+    document.getElementById('compDeltaUnique').innerHTML = fmt(deltaUnique);
+    document.getElementById('compTextUnique').textContent = `MyComputer (${mc.uniqueCount || 0}) vs Endpoints (${ep.uniqueCount || 0})`;
+
+    renderVersionTable('compVerEPBody', ep.versions, ep.vSort, ep.vAsc);
+    renderVersionTable('compVerMCBody', mc.versions, mc.vSort, mc.vAsc);
+}
+
+// --- SORTING FUNCTIONS ---
+window.sortVersionData = (key) => {
+    const s = STORES[currentTab];
+    if(s.vSort === key) s.vAsc = !s.vAsc; else { s.vSort = key; s.vAsc = (key === 'ver'); }
+    renderAll();
+};
+
+window.sortCompVer = (storeId, key) => {
+    const s = STORES[storeId === 'ep' ? 'endpoints' : 'mycomputers'];
+    if(s.vSort === key) s.vAsc = !s.vAsc; else { s.vSort = key; s.vAsc = (key === 'ver'); }
+    renderComparison();
+};
+
+window.handleSort = (col) => { const s = STORES[currentTab]; if (s.sortBy === col) s.sortAsc = !s.sortAsc; else { s.sortBy = col; s.sortAsc = true; } renderAll(); };
+window.handleGroup = (col) => { const s = STORES[currentTab]; s.groupBy = (s.groupBy === col) ? null : col; renderAll(); };
 
 function createRow(r) {
     const tr = document.createElement('tr');
@@ -257,52 +368,11 @@ function createRow(r) {
             const state = r["_" + col + "_state"];
             const cls = state === "single" || state === "recent" ? "bg-valid" : (state === "nodate" ? "bg-nodate" : "bg-old");
             td.innerHTML = `<span class="badge ${cls}">${r[col] === "no" ? "no" : r[col] + " entries"}</span>`;
-        } else {
-            td.textContent = r[col] || "";
-        }
+        } else { td.textContent = r[col] || ""; }
         tr.appendChild(td);
     });
     return tr;
 }
-
-function updateStats(data) {
-    const uniqueHosts = new Set(data.map(r => r.Computer)).size;
-    const versionCounts = {};
-    const grps = { Comp: {}, Aid: {}, NAid: {} };
-
-    data.forEach(r => {
-        if(r.Computer) grps.Comp[r.Computer] = (grps.Comp[r.Computer] || 0) + 1;
-        if(r["Agent Id"]) grps.Aid[r["Agent Id"]] = (grps.Aid[r["Agent Id"]] || 0) + 1;
-        // Skip Excluded GUID in duplicate count stats
-        if(r["New Agent Id"] && r["New Agent Id"] !== EXCLUDED_GUID) {
-            grps.NAid[r["New Agent Id"]] = (grps.NAid[r["New Agent Id"]] || 0) + 1;
-        }
-        const v = r["Agent Version"] || "Unknown";
-        versionCounts[v] = (versionCounts[v] || 0) + 1;
-    });
-
-    document.getElementById('statTotal').textContent = data.length;
-    document.getElementById('statUnique').textContent = uniqueHosts;
-    document.getElementById('statDupComp').textContent = Object.values(grps.Comp).filter(v => v > 1).length;
-    document.getElementById('statDupAgent').textContent = Object.values(grps.Aid).filter(v => v > 1).length;
-    document.getElementById('statDupNewAgent').textContent = Object.values(grps.NAid).filter(v => v > 1).length;
-
-    elements.vTbody.innerHTML = Object.entries(versionCounts)
-        .sort((a,b) => b[1] - a[1])
-        .map(([v, c]) => `<tr><td>${v}</td><td style="text-align:right"><span class="v-count">${c}</span></td></tr>`).join('');
-}
-
-window.handleSort = (col) => {
-    const s = STORES[currentTab];
-    if (s.sortBy === col) s.sortAsc = !s.sortAsc; else { s.sortBy = col; s.sortAsc = true; }
-    renderAll();
-};
-
-window.handleGroup = (col) => {
-    const s = STORES[currentTab];
-    s.groupBy = (s.groupBy === col) ? null : col;
-    renderAll();
-};
 </script>
 </body>
 </html>
