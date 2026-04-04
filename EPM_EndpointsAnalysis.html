@@ -3,181 +3,225 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>EPM Agent Report Processor</title>
+    <title>EPM Pro Architect View</title>
     <style>
         :root {
-            --primary: #2563eb;
-            --dark: #1e293b;
-            --light: #f8fafc;
-            --border: #e2e8f0;
+            --primary: #2563eb; --dark: #0f172a; --light: #f8fafc;
+            --border: #e2e8f0; --group-header: #f1f5f9; --accent: #3b82f6;
         }
 
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background-color: var(--light);
-            color: var(--dark);
-            margin: 0;
-            padding: 2rem;
-        }
+        body { font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; background: var(--light); color: var(--dark); margin: 0; padding: 20px; }
+        
+        /* Layout */
+        .container { max-width: 1400px; margin: 0 auto; }
+        .header-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; border-bottom: 2px solid var(--primary); padding-bottom: 10px; }
+        
+        /* Controls */
+        .toolbar { background: white; padding: 15px; border-radius: 8px; display: flex; gap: 15px; align-items: center; margin-bottom: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+        .search-input { padding: 8px 12px; border: 1px solid var(--border); border-radius: 6px; width: 300px; font-size: 0.9rem; outline: none; }
+        .search-input:focus { border-color: var(--primary); box-shadow: 0 0 0 2px rgba(37,99,235,0.1); }
 
-        .header-section {
-            margin-bottom: 2rem;
-            border-bottom: 2px solid var(--primary);
-            padding-bottom: 1rem;
+        /* Table */
+        .table-wrapper { background: white; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); overflow: auto; max-height: 75vh; }
+        table { width: 100%; border-collapse: collapse; font-size: 0.85rem; table-layout: auto; }
+        
+        th { background: var(--dark); color: white; padding: 10px; text-align: left; position: sticky; top: 0; z-index: 10; }
+        
+        /* Header interactions */
+        .header-content { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+        .col-label { cursor: pointer; flex-grow: 1; }
+        .btn-group { 
+            background: none; border: none; color: #94a3b8; cursor: pointer; 
+            font-size: 1rem; padding: 2px 5px; border-radius: 4px; transition: 0.2s;
         }
+        .btn-group:hover { color: white; background: rgba(255,255,255,0.1); }
+        .btn-group.active { color: #60a5fa; font-weight: bold; }
 
-        #reportTitle {
-            margin: 0;
-            color: var(--primary);
-            font-size: 1.5rem;
-        }
+        td { padding: 8px 12px; border-bottom: 1px solid var(--border); }
+        tr:hover { background-color: #f8fafc; }
 
-        .upload-card {
-            background: white;
-            padding: 1.5rem;
-            border-radius: 8px;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-            margin-bottom: 2rem;
-        }
-
-        .table-container {
-            background: white;
-            border-radius: 8px;
-            box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);
-            overflow: hidden;
-        }
-
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            font-size: 0.85rem;
-        }
-
-        th {
-            background-color: var(--dark);
-            color: white;
-            text-align: left;
-            padding: 12px;
-            position: sticky;
-            top: 0;
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-        }
-
-        td {
-            padding: 10px 12px;
-            border-bottom: 1px solid var(--border);
-        }
-
-        tr:nth-child(even) { background-color: #fcfcfc; }
-        tr:hover { background-color: #f1f5f9; }
-
-        .status-badge {
-            padding: 4px 8px;
-            border-radius: 12px;
-            font-weight: bold;
-            font-size: 0.75rem;
-        }
-        /* Style logic could be added here for 'Disconnected' vs 'Connected' */
+        /* Special Rows */
+        .row-group-head { background: var(--group-header); font-weight: bold; color: var(--primary); border-left: 4px solid var(--primary); cursor: default; }
+        .status-disconnected { color: #ef4444; font-weight: 600; }
+        .count-badge { font-size: 0.7rem; background: #cbd5e1; color: var(--dark); padding: 2px 6px; border-radius: 10px; margin-left: 8px; }
     </style>
 </head>
 <body>
 
-    <div class="header-section">
-        <h1 id="reportTitle">CSV Agent Processor</h1>
-        <p id="fileInfo">Ready to process local report...</p>
+<div class="container">
+    <div class="header-bar">
+        <h1 id="reportTitle" style="margin:0; font-size: 1.4rem;">EPM Agent Explorer</h1>
+        <span id="rowCount" style="font-size: 0.9rem; color: #64748b;">No data loaded</span>
     </div>
 
-    <div class="upload-card">
+    <div class="toolbar">
         <input type="file" id="csvFileInput" accept=".csv">
+        <input type="text" id="searchInput" class="search-input" placeholder="Search anything (Computer, User, Status...)" disabled>
     </div>
 
-    <div class="table-container">
-        <table id="agentTable">
-            <thead id="thead"></thead>
-            <tbody id="tbody"></tbody>
+    <div class="table-wrapper">
+        <table id="mainTable">
+            <thead><tr id="headRow"></tr></thead>
+            <tbody id="tableBody">
+                <tr><td colspan="100%" style="text-align:center; padding: 40px; color: #94a3b8;">Load a CSV file to start</td></tr>
+            </tbody>
         </table>
     </div>
+</div>
 
 <script>
 /**
- * Configuration: Columns we want to extract
+ * APP STATE
  */
-const TARGET_COLUMNS = [
-    "Agent Id", "Computer", "Agent Version", "Agent Status", 
-    "Installed On", "Last Policy Update", "Last Seen", 
-    "Logged In", "New Agent Id"
-];
+let RAW_DATA = [];      // Original data from CSV
+let FILTERED_DATA = []; // After search
+let CONFIG = {
+    targetCols: ["Agent Id", "Computer", "Agent Version", "Agent Status", "Installed On", "Last Policy Update", "Last Seen", "Logged In"],
+    sortBy: null,
+    sortAsc: true,
+    groupBy: null,
+    searchTerm: ""
+};
 
-const fileInput = document.getElementById('csvFileInput');
-const reportTitle = document.getElementById('reportTitle');
-const thead = document.getElementById('thead');
-const tbody = document.getElementById('tbody');
+// UI Elements
+const elements = {
+    file: document.getElementById('csvFileInput'),
+    search: document.getElementById('searchInput'),
+    tbody: document.getElementById('tableBody'),
+    thead: document.getElementById('headRow'),
+    title: document.getElementById('reportTitle'),
+    count: document.getElementById('rowCount')
+};
 
-fileInput.addEventListener('change', function(e) {
+/**
+ * CORE LOGIC
+ */
+
+elements.file.addEventListener('change', (e) => {
     const file = e.target.files[0];
     if (!file) return;
 
     const reader = new FileReader();
-    reader.onload = (event) => processData(event.target.result);
+    reader.onload = (ev) => {
+        parseCSV(ev.target.result);
+        elements.search.disabled = false;
+        applyFiltersAndRender();
+    };
     reader.readAsText(file);
 });
 
-function processData(rawText) {
-    // Split lines and sanitize (remove empty lines)
-    const rows = rawText.split(/\r?\n/).map(line => line.split(',')).filter(row => row.length > 1);
-    
-    if (rows.length < 1) return;
+elements.search.addEventListener('input', (e) => {
+    CONFIG.searchTerm = e.target.value.toLowerCase();
+    applyFiltersAndRender();
+});
 
-    const originalHeaders = rows[0].map(h => h.trim());
+function parseCSV(text) {
+    const lines = text.split(/\r?\n/).filter(l => l.trim() !== "");
+    const headers = lines[0].split(',').map(h => h.trim());
     
-    // 1. Find indices for target columns
-    const colMap = TARGET_COLUMNS.map(target => ({
-        name: target,
-        index: originalHeaders.indexOf(target)
-    })).filter(col => col.index !== -1); // Only keep columns that actually exist
+    // Auto-detect SetName for Title
+    const sIdx = headers.indexOf("SetName");
+    if (sIdx !== -1 && lines[1]) elements.title.textContent = lines[1].split(',')[sIdx];
 
-    // 2. Find SetName index for the Title
-    const setNameIndex = originalHeaders.indexOf("SetName");
-    if (setNameIndex !== -1 && rows[1]) {
-        reportTitle.textContent = `Report: ${rows[1][setNameIndex]}`;
+    // Map requested columns
+    const colMap = CONFIG.targetCols.map(name => ({ name, idx: headers.indexOf(name) })).filter(c => c.idx !== -1);
+
+    RAW_DATA = lines.slice(1).map(line => {
+        const cells = line.split(',');
+        const obj = {};
+        colMap.forEach(c => obj[c.name] = cells[c.idx]?.trim() || "");
+        return obj;
+    });
+}
+
+function applyFiltersAndRender() {
+    // 1. Filter
+    FILTERED_DATA = RAW_DATA.filter(row => {
+        return Object.values(row).some(val => val.toLowerCase().includes(CONFIG.searchTerm));
+    });
+
+    // 2. Sort (if active)
+    if (CONFIG.sortBy) {
+        FILTERED_DATA.sort((a, b) => {
+            const res = a[CONFIG.sortBy].localeCompare(b[CONFIG.sortBy], undefined, {numeric: true});
+            return CONFIG.sortAsc ? res : -res;
+        });
     }
 
-    renderTable(colMap, rows.slice(1));
+    renderUI();
 }
 
-function renderTable(colMap, dataRows) {
-    // Clear UI
-    thead.innerHTML = '';
-    tbody.innerHTML = '';
-
+function renderUI() {
     // Render Headers
-    const headerRow = document.createElement('tr');
-    colMap.forEach(col => {
+    elements.thead.innerHTML = '';
+    CONFIG.targetCols.forEach(col => {
         const th = document.createElement('th');
-        th.textContent = col.name;
-        headerRow.appendChild(th);
-    });
-    thead.appendChild(headerRow);
-
-    // Render Data with DocumentFragment for performance
-    const fragment = document.createDocumentFragment();
-    
-    dataRows.forEach(rowData => {
-        const tr = document.createElement('tr');
+        const isGrouped = CONFIG.groupBy === col;
         
-        colMap.forEach(col => {
-            const td = document.createElement('td');
-            // Security: Always textContent
-            td.textContent = rowData[col.index] || ''; 
-            tr.appendChild(td);
-        });
-        
-        fragment.appendChild(tr);
+        th.innerHTML = `
+            <div class="header-content">
+                <span class="col-label" onclick="handleSort('${col}')">${col} ${CONFIG.sortBy === col ? (CONFIG.sortAsc ? '↑':'↓') : ''}</span>
+                <button class="btn-group ${isGrouped ? 'active' : ''}" 
+                        onclick="handleGroup('${col}')" 
+                        title="Group by this column">⊞</button>
+            </div>
+        `;
+        elements.thead.appendChild(th);
     });
 
-    tbody.appendChild(fragment);
+    // Render Body
+    elements.tbody.innerHTML = '';
+    const frag = document.createDocumentFragment();
+
+    if (CONFIG.groupBy) {
+        const groups = FILTERED_DATA.reduce((acc, r) => {
+            const key = r[CONFIG.groupBy] || "N/A";
+            if (!acc[key]) acc[key] = [];
+            acc[key].push(r);
+            return acc;
+        }, {});
+
+        for (const [key, rows] of Object.entries(groups)) {
+            const gTr = document.createElement('tr');
+            gTr.className = 'row-group-head';
+            gTr.innerHTML = `<td colspan="100%">${CONFIG.groupBy}: ${key} <span class="count-badge">${rows.length} agents</span></td>`;
+            frag.appendChild(gTr);
+            rows.forEach(r => frag.appendChild(createRow(r)));
+        }
+    } else {
+        FILTERED_DATA.forEach(r => frag.appendChild(createRow(r)));
+    }
+
+    elements.tbody.appendChild(frag);
+    elements.count.textContent = `Showing ${FILTERED_DATA.length} of ${RAW_DATA.length} records`;
 }
+
+function createRow(rowData) {
+    const tr = document.createElement('tr');
+    CONFIG.targetCols.forEach(col => {
+        const td = document.createElement('td');
+        const val = rowData[col];
+        td.textContent = val;
+        if (col === "Agent Status" && val === "Disconnected") td.className = 'status-disconnected';
+        tr.appendChild(td);
+    });
+    return tr;
+}
+
+/**
+ * INTERACTION HANDLERS
+ */
+window.handleSort = (col) => {
+    if (CONFIG.sortBy === col) CONFIG.sortAsc = !CONFIG.sortAsc;
+    else { CONFIG.sortBy = col; CONFIG.sortAsc = true; }
+    applyFiltersAndRender();
+};
+
+window.handleGroup = (col) => {
+    CONFIG.groupBy = (CONFIG.groupBy === col) ? null : col;
+    applyFiltersAndRender();
+};
 </script>
+
 </body>
 </html>
