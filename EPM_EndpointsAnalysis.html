@@ -3,222 +3,187 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>EPM Architect - Professional Validator</title>
+    <title>EPM Architect - Asset Intelligence Suite</title>
     <style>
         :root {
-            --primary: #2563eb; --dark: #0f172a; --light: #f1f5f9; --white: #ffffff;
-            --border: #e2e8f0; --success: #22c55e; --danger: #ef4444; --gray: #94a3b8;
-            --info: #3b82f6; --warning: #f59e0b;
+            --primary: #2563eb; 
+            --dark: #0f172a; 
+            --light: #f1f5f9; 
+            --white: #ffffff;
+            --border: #e2e8f0; 
+            --success: #22c55e; 
+            --danger: #ef4444; 
+            --gray: #94a3b8;
+            --warning: #f59e0b; 
+            --info: #3b82f6;
+            
+            /* Comparison View */
+            --mc-only: #f0fdf4; /* Verde tenue per MyComputer */
+            --ep-only: #eff6ff; /* Blu tenue per Endpoints (Neutro) */
         }
 
-        body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--light); margin: 0; padding: 0; color: var(--dark); }
-        
-        /* Navigation Tabs */
+        body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--light); margin: 0; color: var(--dark); }
         .tab-nav { background: var(--dark); padding: 10px 20px 0 20px; display: flex; gap: 5px; position: sticky; top: 0; z-index: 100; }
-        .tab-button { 
-            background: #1e293b; color: #94a3b8; border: none; padding: 12px 25px; 
-            border-radius: 8px 8px 0 0; cursor: pointer; font-weight: 600; transition: 0.2s;
-        }
-        .tab-button:hover { background: #334155; color: white; }
+        .tab-button { background: #1e293b; color: #94a3b8; border: none; padding: 12px 25px; border-radius: 8px 8px 0 0; cursor: pointer; font-weight: 600; transition: all 0.2s; }
         .tab-button.active { background: var(--white) !important; color: var(--primary) !important; }
 
-        .main-content { padding: 20px; max-width: 1700px; margin: 0 auto; }
+        .main-content { padding: 20px; max-width: 1800px; margin: 0 auto; }
         .view-section { display: none; }
         .view-section.active { display: block; }
 
-        /* Dashboard & Stats */
+        /* Custom File Upload Styling (English forced) */
+        .upload-btn {
+            background: var(--primary); color: white; padding: 8px 16px;
+            border-radius: 6px; cursor: pointer; font-size: 0.85rem; font-weight: 600;
+            display: inline-block; transition: background 0.2s;
+        }
+        .upload-btn:hover { background: #1d4ed8; }
+        #csvFileInput { display: none; } /* Hidden original input */
+
+        /* Header & Title Area */
+        .report-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; background: white; padding: 15px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); height: 45px; }
+        .set-title { margin: 0; font-size: 1.1rem; font-weight: 700; color: var(--dark); }
+        .mismatch-alert { color: var(--danger); background: #fee2e2; padding: 6px 15px; border-radius: 6px; border: 1px solid var(--danger); font-size: 0.9rem; font-weight: 600; }
+
+        /* Search Bar styling */
+        .search-bar-container { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+        .search-label { font-weight: 600; font-size: 0.85rem; color: var(--gray); text-transform: uppercase; }
+        .search-input { padding: 8px 12px; border: 1px solid var(--border); border-radius: 6px; width: 300px; font-size: 0.85rem; outline: none; }
+        .search-input:focus { border-color: var(--primary); box-shadow: 0 0 0 2px rgba(37,99,235,0.1); }
+
         .dashboard-layout { display: grid; grid-template-columns: 2fr 1fr; gap: 20px; margin-bottom: 20px; }
         .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; }
-        .stat-card { background: white; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); border-top: 4px solid var(--gray); }
-        .stat-card.primary { border-top-color: var(--primary); }
-        .stat-card.warning { border-top-color: var(--danger); }
-        .stat-card.success { border-top-color: var(--success); }
-        .stat-card.delta { border-top-color: var(--warning); }
-        .stat-label { font-size: 0.65rem; color: var(--gray); text-transform: uppercase; font-weight: bold; }
-        .stat-value { font-size: 1.3rem; font-weight: 800; margin-top: 5px; }
-
-        /* Unified Version Table Style */
-        .version-card { background: white; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); padding: 15px; border-top: 4px solid var(--info); max-height: 350px; display: flex; flex-direction: column; }
-        .version-table-container { overflow-y: auto; flex-grow: 1; margin-top: 10px; }
-        .version-table { width: 100%; border-collapse: collapse; font-size: 0.75rem; }
-        .version-table th { 
-            text-align: left; background: #f8fafc; padding: 8px; border-bottom: 2px solid var(--border); 
-            cursor: pointer; position: sticky; top: 0; z-index: 5; color: var(--gray);
-        }
-        .version-table th:hover { color: var(--primary); }
-        .version-table td { padding: 6px 8px; border-bottom: 1px solid #f1f1f1; }
-        .v-count { background: #f1f5f9; padding: 2px 6px; border-radius: 4px; font-weight: bold; color: var(--primary); }
-
-        /* Main Table Styles */
-        .toolbar { background: white; padding: 15px; border-radius: 8px; display: flex; gap: 15px; align-items: center; margin-bottom: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
-        .search-input { padding: 8px 12px; border: 1px solid var(--border); border-radius: 6px; width: 300px; outline: none; }
-        .table-wrapper { background: white; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); overflow: auto; max-height: 55vh; }
+        .stat-card { background: white; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); border-top: 4px solid var(--gray); font-size: 0.85rem; }
+        .stat-card b { font-size: 1.1rem; display: block; margin-top: 5px; }
         
-        table.main-data-table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
-        table.main-data-table th { background: var(--dark); color: white; padding: 12px 10px; text-align: left; position: sticky; top: 0; z-index: 10; }
-        
-        /* FIX: Button Group Background */
-        .btn-group { background: var(--dark); border: none; color: #64748b; cursor: pointer; font-size: 1rem; padding: 2px 5px; border-radius: 4px; }
-        .btn-group:hover { color: white; }
-        .btn-group.active { color: #60a5fa; font-weight: bold; }
-        
-        .header-content { display: flex; align-items: center; justify-content: space-between; }
+        .table-container { background: white; border-radius: 8px; overflow: auto; border: 1px solid var(--border); box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+        table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
+        th { background: var(--dark); color: white; padding: 12px 10px; text-align: left; position: sticky; top: 0; z-index: 10; }
         td { padding: 8px 10px; border-bottom: 1px solid var(--border); white-space: nowrap; }
-        .badge { padding: 3px 8px; border-radius: 12px; font-weight: bold; font-size: 0.7rem; color: white; display: inline-block; min-width: 65px; text-align: center; }
+
+        .v-table th { background: #f8fafc; color: var(--gray); border-bottom: 2px solid var(--border); cursor: pointer; }
+        .badge { padding: 3px 8px; border-radius: 12px; font-weight: bold; font-size: 0.7rem; color: white; text-align: center; min-width: 70px; display: inline-block; }
         .bg-valid { background-color: var(--success); }
         .bg-old { background-color: var(--danger); }
         .bg-nodate { background-color: var(--gray); }
-        .row-group-head { background: #f8fafc; font-weight: bold; color: var(--primary); border-left: 5px solid var(--primary); }
-        .neg-delta { color: var(--danger); }
-        .pos-delta { color: var(--success); }
+        
+        .row-group-head { background: #f1f5f9; font-weight: bold; color: var(--primary); }
+        .row-mc-only { background-color: var(--mc-only) !important; }
+        .row-ep-only { background-color: var(--ep-only) !important; }
+
+        .btn-group { background: rgba(255,255,255,0.1); border: none; color: #94a3b8; cursor: pointer; padding: 2px 6px; border-radius: 4px; }
+        .btn-group.active { color: #60a5fa; background: rgba(96,165,250,0.2); }
+        .header-inner { display: flex; align-items: center; justify-content: space-between; }
+
+        .delta-pos { color: var(--success); font-weight: bold; }
+        .delta-neg { color: var(--danger); font-weight: bold; }
     </style>
 </head>
 <body>
 
 <nav class="tab-nav">
-    <button id="tab-endpoints" class="tab-button active" onclick="switchTab('endpoints')">Endpoints</button>
-    <button id="tab-mycomputers" class="tab-button" onclick="switchTab('mycomputers')">MyComputer</button>
-    <button id="tab-comparison" class="tab-button" onclick="switchTab('comparison')">Comparison View</button>
+    <button id="btn-endpoints" class="tab-button active" onclick="switchTab('endpoints')">Endpoints</button>
+    <button id="btn-mycomputers" class="tab-button" onclick="switchTab('mycomputers')">MyComputer</button>
+    <button id="btn-comparison" class="tab-button" onclick="switchTab('comparison')">Comparison View</button>
 </nav>
 
 <div class="main-content">
     
-    <div id="view-data" class="view-section active">
-        <div class="toolbar">
+    <div class="report-header">
+        <div id="uploadContainer">
+            <label for="csvFileInput" class="upload-btn">UPLOAD CSV</label>
             <input type="file" id="csvFileInput" accept=".csv">
-            <input type="text" id="searchInput" class="search-input" placeholder="Search current list...">
-            <h2 id="reportTitle" style="margin:0 0 0 auto; font-size: 1rem; color: var(--gray);">No file loaded</h2>
         </div>
+        <div id="titleContainer">
+            <h2 id="reportTitle" class="set-title">Load a report to start</h2>
+        </div>
+    </div>
 
+    <div id="view-data" class="view-section active">
         <div class="dashboard-layout">
             <div class="stats-grid">
-                <div class="stat-card primary"><div class="stat-label">Total Records</div><div class="stat-value" id="statTotal">0</div></div>
-                <div class="stat-card success"><div class="stat-label">Unique Hostnames</div><div class="stat-value" id="statUnique">0</div></div>
-                <div class="stat-card warning"><div class="stat-label">Dup: Computers</div><div class="stat-value" id="statDupComp">0</div></div>
-                <div class="stat-card warning"><div class="stat-label">Dup: Agent IDs</div><div class="stat-value" id="statDupAgent">0</div></div>
-                <div class="stat-card warning"><div class="stat-label">Dup: New Agent IDs</div><div class="stat-value" id="statDupNewAgent">0</div></div>
+                <div class="stat-card" style="border-top-color: var(--primary)">Total Records <b id="statTotal">0</b></div>
+                <div class="stat-card" style="border-top-color: var(--success)">Unique Hosts <b id="statUnique">0</b></div>
+                <div class="stat-card" style="border-top-color: var(--warning)">Duplicate Comp <b id="statDupComp">0</b></div>
+                <div class="stat-card" style="border-top-color: var(--warning)">Duplicate Agent <b id="statDupAgent">0</b></div>
             </div>
             
-            <div class="version-card">
-                <div class="stat-label">Version Distribution</div>
-                <div class="version-table-container">
-                    <table class="version-table">
-                        <thead>
-                            <tr>
-                                <th onclick="sortVersionData('ver')">Version ↕</th>
-                                <th onclick="sortVersionData('count')" style="text-align:right">Count ↕</th>
-                            </tr>
-                        </thead>
-                        <tbody id="versionStatBody"></tbody>
-                    </table>
-                </div>
+            <div class="table-container" style="max-height: 180px;">
+                <table class="v-table">
+                    <thead><tr><th onclick="sortVersions('local','ver')">Version ↕</th><th onclick="sortVersions('local','count')">Count ↕</th></tr></thead>
+                    <tbody id="localVersionBody"></tbody>
+                </table>
             </div>
         </div>
 
-        <div class="table-wrapper">
-            <table class="main-data-table"><thead><tr id="headRow"></tr></thead><tbody id="tableBody"></tbody></table>
+        <div class="search-bar-container">
+            <span class="search-label">Filter Devices:</span>
+            <input type="text" id="searchInput" class="search-input" placeholder="Search by name, ID or version...">
+        </div>
+
+        <div class="table-container" style="max-height: 60vh;">
+            <table id="mainDataTable"><thead><tr id="mainHead"></tr></thead><tbody id="mainBody"></tbody></table>
         </div>
     </div>
 
     <div id="view-comparison" class="view-section">
-        <div class="stats-grid" style="grid-template-columns: 1fr 1fr; margin-bottom: 20px;">
-            <div class="stat-card delta">
-                <div class="stat-label">Delta: Total Records (MC - EP)</div>
-                <div class="stat-value" id="compDeltaTotal">0</div>
-                <div id="compTextTotal" style="font-size: 0.75rem; margin-top:5px; color: var(--gray);"></div>
+        <div class="stats-grid" style="margin-bottom: 20px;">
+            <div class="stat-card">Delta Records <b id="compDeltaTotal">0</b></div>
+            <div class="stat-card">Delta Unique <b id="compDeltaUnique">0</b></div>
+            <div class="stat-card" style="border-top-color: var(--danger)">Total Mismatches <b id="compDiscCount">0</b></div>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px; margin-bottom: 20px;">
+            <div class="table-container" style="max-height: 250px;">
+                <div style="padding: 8px; font-weight: bold; background: #f8fafc; font-size: 0.75rem;">Endpoints Versions</div>
+                <table class="v-table"><thead><tr><th onclick="sortVersions('ep','ver')">Ver ↕</th><th onclick="sortVersions('ep','count')">Qty ↕</th></tr></thead><tbody id="compVerEPBody"></tbody></table>
             </div>
-            <div class="stat-card delta">
-                <div class="stat-label">Delta: Unique Hostnames (MC - EP)</div>
-                <div class="stat-value" id="compDeltaUnique">0</div>
-                <div id="compTextUnique" style="font-size: 0.75rem; margin-top:5px; color: var(--gray);"></div>
+            <div class="table-container" style="max-height: 250px;">
+                <div style="padding: 8px; font-weight: bold; background: #f8fafc; font-size: 0.75rem;">MyComputer Versions</div>
+                <table class="v-table"><thead><tr><th onclick="sortVersions('mc','ver')">Ver ↕</th><th onclick="sortVersions('mc','count')">Qty ↕</th></tr></thead><tbody id="compVerMCBody"></tbody></table>
+            </div>
+            <div class="table-container" style="max-height: 250px; border-top: 4px solid var(--info);">
+                <div style="padding: 8px; font-weight: bold; background: #eff6ff; font-size: 0.75rem;">Delta (MC - EP)</div>
+                <table class="v-table"><thead><tr><th onclick="sortDelta('ver')">Ver ↕</th><th onclick="sortDelta('diff')">Δ ↕</th></tr></thead><tbody id="compVerDeltaBody"></tbody></table>
             </div>
         </div>
 
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
-            <div class="version-card">
-                <div class="stat-label" style="color: var(--primary);">Endpoints Versions</div>
-                <div class="version-table-container">
-                    <table class="version-table">
-                        <thead><tr><th onclick="sortCompVer('ep', 'ver')">Version ↕</th><th onclick="sortCompVer('ep', 'count')" style="text-align:right">Count ↕</th></tr></thead>
-                        <tbody id="compVerEPBody"></tbody>
-                    </table>
-                </div>
-            </div>
-            <div class="version-card">
-                <div class="stat-label" style="color: var(--warning);">MyComputer Versions</div>
-                <div class="version-table-container">
-                    <table class="version-table">
-                        <thead><tr><th onclick="sortCompVer('mc', 'ver')">Version ↕</th><th onclick="sortCompVer('mc', 'count')" style="text-align:right">Count ↕</th></tr></thead>
-                        <tbody id="compVerMCBody"></tbody>
-                    </table>
-                </div>
-            </div>
+        <div class="search-bar-container">
+            <span class="search-label">Filter Reconciliation:</span>
+            <input type="text" id="reconSearch" class="search-input" placeholder="Find specific mismatch...">
+        </div>
+
+        <div class="table-container" style="max-height: 45vh;">
+            <table id="reconTable"><thead><tr id="reconHead"></tr></thead><tbody id="reconBody"></tbody></table>
         </div>
     </div>
-
 </div>
 
 <script>
-/** * STATE MANAGEMENT
- */
 const EXCLUDED_GUID = "00000000-0000-0000-0000-000000000000";
 const COLUMNS = ["Dup:Computer", "Dup:AgentId", "Dup:NewAgentId", "Computer", "Agent Id", "New Agent Id", "Agent Version", "Agent Status", "Last Seen", "Logged In"];
+const RECON_COLS = ["Computer", "Agent Id", "New Agent Id", "Agent Version", "Agent Status", "Last Seen", "Logged In"];
 
 let currentTab = 'endpoints';
 let STORES = {
-    endpoints: { raw: [], sortBy: null, sortAsc: true, groupBy: null, search: "", versions: [], vSort: 'count', vAsc: false },
-    mycomputers: { raw: [], sortBy: null, sortAsc: true, groupBy: null, search: "", versions: [], vSort: 'count', vAsc: false }
+    endpoints: { raw: [], sortBy: null, sortAsc: true, groupBy: null, search: "", versions: [], vSort: 'count', vAsc: false, setName: "" },
+    mycomputers: { raw: [], sortBy: null, sortAsc: true, groupBy: null, search: "", versions: [], vSort: 'count', vAsc: false, setName: "" },
+    comparison: { raw: [], sortBy: null, sortAsc: true, groupBy: null, search: "", delta: [], dSort: 'diff', dAsc: false }
 };
 
-const elements = {
-    file: document.getElementById('csvFileInput'),
-    search: document.getElementById('searchInput'),
-    tbody: document.getElementById('tableBody'),
-    thead: document.getElementById('headRow'),
-    title: document.getElementById('reportTitle'),
-    vTbody: document.getElementById('versionStatBody')
-};
-
-// --- HANDLERS ---
-elements.file.addEventListener('change', e => {
-    const file = e.target.files[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = ev => {
-        STORES[currentTab].raw = parseCSV(ev.target.result);
-        renderAll();
-    };
-    reader.readAsText(file);
-});
-
-elements.search.addEventListener('input', e => {
-    STORES[currentTab].search = e.target.value.toLowerCase();
-    renderAll();
-});
-
-function switchTab(tabId) {
-    currentTab = tabId;
-    
-    // UI Update
-    document.querySelectorAll('.tab-button').forEach(btn => btn.classList.remove('active'));
-    document.getElementById('tab-' + tabId).classList.add('active');
-    
-    document.getElementById('view-data').classList.toggle('active', tabId !== 'comparison');
-    document.getElementById('view-comparison').classList.toggle('active', tabId === 'comparison');
-
-    if (tabId === 'comparison') renderComparison();
-    else renderAll();
-}
-
+// --- PARSER ---
 function parseCSV(text) {
     const lines = text.split(/\r?\n/).filter(l => l.trim() !== "");
-    if (lines.length < 2) return [];
+    if (lines.length < 2) return { rows: [], setName: "" };
     const headers = lines[0].split(',').map(h => h.trim());
+    const setNameIdx = headers.indexOf("SetName");
+    let setName = (setNameIdx !== -1 && lines[1]) ? lines[1].split(',')[setNameIdx]?.trim() || "Unknown Set" : "Unknown Set";
+
     const csvKeys = ["Computer", "Agent Id", "New Agent Id", "Agent Version", "Agent Status", "Last Seen", "Logged In"];
     const colMap = csvKeys.map(k => ({ k, idx: headers.indexOf(k) })).filter(x => x.idx !== -1);
-
     const groups = { "Computer": {}, "Agent Id": {}, "New Agent Id": {} };
-    const rows = lines.slice(1).map(line => {
+    
+    const rawRows = lines.slice(1).map(line => {
         const cells = line.split(',');
         const row = {};
         colMap.forEach(c => row[c.k] = cells[c.idx]?.trim() || "");
@@ -235,7 +200,7 @@ function parseCSV(text) {
     const winners = { "Computer": new Set(), "Agent Id": new Set(), "New Agent Id": new Set() };
     Object.keys(groups).forEach(k => {
         Object.values(groups[k]).forEach(grp => {
-            let win = null; let max = -1;
+            let win = null, max = -1;
             grp.forEach(r => {
                 const t = r["Last Seen"] ? new Date(r["Last Seen"]).getTime() : -1;
                 if (t > max) { max = t; win = r; }
@@ -244,30 +209,50 @@ function parseCSV(text) {
         });
     });
 
-    return rows.map(r => {
+    const rows = rawRows.map(r => {
         ["Computer", "Agent Id", "New Agent Id"].forEach(k => {
-            const vKey = "Dup:" + k.replace(" ", "");
+            const vKey = "Dup:" + k.replace(/\s/g, "");
+            const grp = groups[k][r[k]] || [r];
             if (k === "New Agent Id" && r[k] === EXCLUDED_GUID) {
                 r[vKey] = "no"; r["_" + vKey + "_state"] = "single";
             } else {
-                const grp = groups[k][r[k]] || [r];
                 r[vKey] = grp.length === 1 ? "no" : grp.length;
                 r["_" + vKey + "_state"] = grp.length === 1 ? "single" : (!r["Last Seen"] ? "nodate" : (winners[k].has(r) ? "recent" : "old"));
             }
         });
         return r;
     });
+    return { rows, setName };
 }
 
-function renderAll() {
-    const s = STORES[currentTab];
-    if(!s) return;
-    let data = s.raw.filter(r => Object.values(r).some(v => String(v).toLowerCase().includes(s.search)));
+function updateTitles() {
+    const titleEl = document.getElementById('reportTitle');
+    const uploadBtn = document.getElementById('uploadContainer');
     
-    // Stats Update
-    updateStoreStats(s, data);
-    
-    // Main Sort
+    if (currentTab === 'comparison') {
+        uploadBtn.style.visibility = 'hidden'; // Hide upload in comparison
+        const setEP = STORES.endpoints.setName;
+        const setMC = STORES.mycomputers.setName;
+        if (!setEP || !setMC) titleEl.innerHTML = `<span style="color: var(--gray)">Load both files to compare</span>`;
+        else if (setEP === setMC) titleEl.innerHTML = `SET: <span style="color: var(--primary)">${setEP}</span>`;
+        else titleEl.innerHTML = `<span class="mismatch-alert">⚠️ SET MISMATCH: ${setEP} vs ${setMC}</span>`;
+    } else {
+        uploadBtn.style.visibility = 'visible';
+        const name = STORES[currentTab].setName;
+        titleEl.textContent = name ? `SetName: ${name}` : "Upload a CSV file";
+    }
+}
+
+function renderGeneralTable(tableId, headId, bodyId, storeId, columns) {
+    const s = STORES[storeId];
+    const head = document.getElementById(headId);
+    const body = document.getElementById(bodyId);
+    if(!head || !body) return;
+    let data = [...s.raw];
+    if (s.search) {
+        const term = s.search.toLowerCase();
+        data = data.filter(r => Object.values(r).some(v => String(v).toLowerCase().includes(term)));
+    }
     if (s.sortBy) {
         data.sort((a, b) => {
             let vA = a[s.sortBy], vB = b[s.sortBy];
@@ -278,101 +263,101 @@ function renderAll() {
             return s.sortAsc ? String(vA).localeCompare(String(vB), undefined, {numeric: true}) : String(vB).localeCompare(String(vA), undefined, {numeric: true});
         });
     }
-
-    elements.thead.innerHTML = COLUMNS.map(col => `<th><div class="header-content"><span class="col-label" onclick="handleSort('${col}')">${col}${s.sortBy === col ? (s.sortAsc ? ' ↑' : ' ↓') : ''}</span><button class="btn-group ${s.groupBy === col ? 'active' : ''}" onclick="handleGroup('${col}')">⊞</button></div></th>`).join('');
-    elements.tbody.innerHTML = "";
-    
-    const frag = document.createDocumentFragment();
+    head.innerHTML = columns.map(col => `<th><div class="header-inner"><span style="cursor:pointer" onclick="handleSort('${storeId}','${col}')">${col} ${s.sortBy===col?(s.sortAsc?'↑':'↓'):''}</span><button class="btn-group ${s.groupBy===col?'active':''}" onclick="handleGroup('${storeId}','${col}')">⊞</button></div></th>`).join('');
+    body.innerHTML = "";
     if (s.groupBy) {
         const grouped = data.reduce((acc, r) => { const k = r[s.groupBy] || "N/A"; if (!acc[k]) acc[k] = []; acc[k].push(r); return acc; }, {});
-        for (const [k, rows] of Object.entries(grouped)) {
-            const gTr = document.createElement('tr'); gTr.className = 'row-group-head';
-            gTr.innerHTML = `<td colspan="100%">${s.groupBy}: ${k} (${rows.length})</td>`;
-            frag.appendChild(gTr);
-            rows.forEach(r => frag.appendChild(createRow(r)));
-        }
-    } else { data.forEach(r => frag.appendChild(createRow(r))); }
-    elements.tbody.appendChild(frag);
-    
-    renderVersionTable('versionStatBody', s.versions, s.vSort, s.vAsc);
-    elements.title.textContent = s.raw.length > 0 ? `Active: ${currentTab.toUpperCase()}` : "Load a CSV file";
+        Object.entries(grouped).forEach(([k, rows]) => {
+            body.insertAdjacentHTML('beforeend', `<tr><td colspan="100%" class="row-group-head">${s.groupBy}: ${k} (${rows.length})</td></tr>`);
+            rows.forEach(r => body.appendChild(createRow(r, columns)));
+        });
+    } else data.forEach(r => body.appendChild(createRow(r, columns)));
 }
 
-function updateStoreStats(store, data) {
-    const vMap = {};
-    const grps = { Comp: {}, Aid: {}, NAid: {} };
-    const hosts = new Set();
-
-    data.forEach(r => {
-        if(r.Computer) { hosts.add(r.Computer); grps.Comp[r.Computer] = (grps.Comp[r.Computer] || 0) + 1; }
-        if(r["Agent Id"]) grps.Aid[r["Agent Id"]] = (grps.Aid[r["Agent Id"]] || 0) + 1;
-        if(r["New Agent Id"] && r["New Agent Id"] !== EXCLUDED_GUID) grps.NAid[r["New Agent Id"]] = (grps.NAid[r["New Agent Id"]] || 0) + 1;
-        const v = r["Agent Version"] || "Unknown";
-        vMap[v] = (vMap[v] || 0) + 1;
-    });
-
-    store.uniqueCount = hosts.size;
-    store.versions = Object.entries(vMap).map(([ver, count]) => ({ ver, count }));
-    
-    document.getElementById('statTotal').textContent = data.length;
-    document.getElementById('statUnique').textContent = hosts.size;
-    document.getElementById('statDupComp').textContent = Object.values(grps.Comp).filter(v => v > 1).length;
-    document.getElementById('statDupAgent').textContent = Object.values(grps.Aid).filter(v => v > 1).length;
-    document.getElementById('statDupNewAgent').textContent = Object.values(grps.NAid).filter(v => v > 1).length;
-}
-
-function renderVersionTable(targetId, data, sortKey, asc) {
-    const sorted = [...data].sort((a,b) => {
-        if(sortKey === 'count') return asc ? a.count - b.count : b.count - a.count;
-        return asc ? a.ver.localeCompare(b.ver, undefined, {numeric: true}) : b.ver.localeCompare(a.ver, undefined, {numeric: true});
-    });
-    document.getElementById(targetId).innerHTML = sorted.map(i => `<tr><td>${i.ver}</td><td style="text-align:right"><span class="v-count">${i.count}</span></td></tr>`).join('');
-}
-
-function renderComparison() {
-    const ep = STORES.endpoints; const mc = STORES.mycomputers;
-    const deltaTotal = mc.raw.length - ep.raw.length;
-    const deltaUnique = (mc.uniqueCount || 0) - (ep.uniqueCount || 0);
-
-    const fmt = (val) => `<span class="${val > 0 ? 'pos-delta' : (val < 0 ? 'neg-delta' : '')}">${val > 0 ? '+' : ''}${val}</span>`;
-    document.getElementById('compDeltaTotal').innerHTML = fmt(deltaTotal);
-    document.getElementById('compTextTotal').textContent = `MyComputer (${mc.raw.length}) vs Endpoints (${ep.raw.length})`;
-    document.getElementById('compDeltaUnique').innerHTML = fmt(deltaUnique);
-    document.getElementById('compTextUnique').textContent = `MyComputer (${mc.uniqueCount || 0}) vs Endpoints (${ep.uniqueCount || 0})`;
-
-    renderVersionTable('compVerEPBody', ep.versions, ep.vSort, ep.vAsc);
-    renderVersionTable('compVerMCBody', mc.versions, mc.vSort, mc.vAsc);
-}
-
-// --- SORTING FUNCTIONS ---
-window.sortVersionData = (key) => {
-    const s = STORES[currentTab];
-    if(s.vSort === key) s.vAsc = !s.vAsc; else { s.vSort = key; s.vAsc = (key === 'ver'); }
-    renderAll();
-};
-
-window.sortCompVer = (storeId, key) => {
-    const s = STORES[storeId === 'ep' ? 'endpoints' : 'mycomputers'];
-    if(s.vSort === key) s.vAsc = !s.vAsc; else { s.vSort = key; s.vAsc = (key === 'ver'); }
-    renderComparison();
-};
-
-window.handleSort = (col) => { const s = STORES[currentTab]; if (s.sortBy === col) s.sortAsc = !s.sortAsc; else { s.sortBy = col; s.sortAsc = true; } renderAll(); };
-window.handleGroup = (col) => { const s = STORES[currentTab]; s.groupBy = (s.groupBy === col) ? null : col; renderAll(); };
-
-function createRow(r) {
+function createRow(r, cols) {
     const tr = document.createElement('tr');
-    COLUMNS.forEach(col => {
+    if (r._srcClass) tr.className = r._srcClass;
+    cols.forEach(col => {
         const td = document.createElement('td');
         if (col.startsWith("Dup:")) {
-            const state = r["_" + col + "_state"];
+            const vKey = col.replace(/\s/g, "");
+            const state = r["_" + vKey + "_state"];
             const cls = state === "single" || state === "recent" ? "bg-valid" : (state === "nodate" ? "bg-nodate" : "bg-old");
-            td.innerHTML = `<span class="badge ${cls}">${r[col] === "no" ? "no" : r[col] + " entries"}</span>`;
-        } else { td.textContent = r[col] || ""; }
+            td.innerHTML = `<span class="badge ${cls}">${r[col]} ${r[col]==='no'?'':'entries'}</span>`;
+        } else td.textContent = r[col] || "";
         tr.appendChild(td);
     });
     return tr;
 }
+
+function refreshVersions(sid) {
+    const s = STORES[sid];
+    const map = {};
+    s.raw.forEach(r => { const v = r["Agent Version"] || "Unknown"; map[v] = (map[v] || 0) + 1; });
+    s.versions = Object.entries(map).map(([ver, count]) => ({ ver, count }));
+    const target = (currentTab === sid) ? 'localVersionBody' : (sid==='endpoints'?'compVerEPBody':'compVerMCBody');
+    const tbody = document.getElementById(target);
+    if(!tbody) return;
+    const sorted = [...s.versions].sort((a,b) => s.vSort === 'count' ? (s.vAsc ? a.count - b.count : b.count - a.count) : (s.vAsc ? a.ver.localeCompare(b.ver, undefined, {numeric:true}) : b.ver.localeCompare(a.ver, undefined, {numeric:true})));
+    tbody.innerHTML = sorted.map(v => `<tr><td>${v.ver}</td><td style="text-align:right"><b>${v.count}</b></td></tr>`).join('');
+}
+
+function calculateDelta() {
+    const ep = STORES.endpoints, mc = STORES.mycomputers, c = STORES.comparison;
+    const allVers = new Set([...ep.versions.map(v=>v.ver), ...mc.versions.map(v=>v.ver)]);
+    const epMap = Object.fromEntries(ep.versions.map(v => [v.ver, v.count]));
+    const mcMap = Object.fromEntries(mc.versions.map(v => [v.ver, v.count]));
+    c.delta = Array.from(allVers).map(ver => ({ ver, diff: (epMap[ver] || 0) - (mcMap[ver] || 0) }));
+    const sorted = [...c.delta].sort((a,b) => c.dSort === 'diff' ? (c.dAsc ? a.diff - b.diff : b.diff - a.diff) : (c.dAsc ? a.ver.localeCompare(b.ver, undefined, {numeric:true}) : b.ver.localeCompare(a.ver, undefined, {numeric:true})));
+    document.getElementById('compVerDeltaBody').innerHTML = sorted.map(v => `<tr class="${v.diff > 0 ? 'delta-pos' : (v.diff < 0 ? 'delta-neg' : '')}"><td>${v.ver}</td><td style="text-align:right"><b>${v.diff > 0 ? '+' : ''}${v.diff}</b></td></tr>`).join('');
+}
+
+function switchTab(id) {
+    currentTab = id;
+    document.querySelectorAll('.tab-button').forEach(b => b.classList.toggle('active', b.id.includes(id)));
+    document.getElementById('view-data').classList.toggle('active', id !== 'comparison');
+    document.getElementById('view-comparison').classList.toggle('active', id === 'comparison');
+    updateTitles();
+    if (id === 'comparison') {
+        const ep = STORES.endpoints, mc = STORES.mycomputers, c = STORES.comparison;
+        document.getElementById('compDeltaTotal').textContent = mc.raw.length - ep.raw.length;
+        const epSet = new Set(ep.raw.map(r => r.Computer)), mcSet = new Set(mc.raw.map(r => r.Computer));
+        document.getElementById('compDeltaUnique').textContent = mcSet.size - epSet.size;
+        c.raw = [...mc.raw.filter(r => !epSet.has(r.Computer)).map(r => ({...r, _srcClass: 'row-mc-only'})), ...ep.raw.filter(r => !mcSet.has(r.Computer)).map(r => ({...r, _srcClass: 'row-ep-only'}))];
+        document.getElementById('compDiscCount').textContent = c.raw.length;
+        refreshVersions('endpoints'); refreshVersions('mycomputers'); calculateDelta();
+        renderGeneralTable('reconTable', 'reconHead', 'reconBody', 'comparison', RECON_COLS);
+    } else {
+        const s = STORES[id];
+        document.getElementById('statTotal').textContent = s.raw.length;
+        document.getElementById('statUnique').textContent = new Set(s.raw.map(r => r.Computer)).size;
+        const getDups = (k) => { const m = {}; s.raw.forEach(r => { if(r[k] && r[k]!==EXCLUDED_GUID) m[r[k]]=(m[r[k]]||0)+1 }); return Object.values(m).filter(v => v > 1).length; };
+        document.getElementById('statDupComp').textContent = getDups('Computer');
+        document.getElementById('statDupAgent').textContent = getDups('Agent Id');
+        refreshVersions(id); renderGeneralTable('mainDataTable', 'mainHead', 'mainBody', id, COLUMNS);
+        document.getElementById('searchInput').value = s.search;
+    }
+}
+
+// --- HANDLERS ---
+window.handleSort = (sid, col) => { const s = STORES[sid]; if(s.sortBy === col) s.sortAsc = !s.sortAsc; else { s.sortBy = col; s.sortAsc = true; } if(sid === 'comparison') renderGeneralTable('reconTable', 'reconHead', 'reconBody', 'comparison', RECON_COLS); else renderGeneralTable('mainDataTable', 'mainHead', 'mainBody', sid, COLUMNS); };
+window.handleGroup = (sid, col) => { const s = STORES[sid]; s.groupBy = s.groupBy === col ? null : col; if(sid === 'comparison') renderGeneralTable('reconTable', 'reconHead', 'reconBody', 'comparison', RECON_COLS); else renderGeneralTable('mainDataTable', 'mainHead', 'mainBody', sid, COLUMNS); };
+window.sortVersions = (loc, key) => { const sid = (loc === 'local') ? currentTab : (loc === 'ep' ? 'endpoints' : 'mycomputers'); const s = STORES[sid]; if(s.vSort === key) s.vAsc = !s.vAsc; else { s.vSort = key; s.vAsc = (key === 'ver'); } refreshVersions(sid); };
+window.sortDelta = (key) => { const c = STORES.comparison; if(c.dSort === key) c.dAsc = !c.dAsc; else { c.dSort = key; c.dAsc = (key === 'ver'); } calculateDelta(); };
+
+document.getElementById('csvFileInput').addEventListener('change', e => {
+    const file = e.target.files[0]; if(!file) return;
+    const reader = new FileReader();
+    reader.onload = ev => { 
+        const result = parseCSV(ev.target.result);
+        STORES[currentTab].raw = result.rows;
+        STORES[currentTab].setName = result.setName;
+        switchTab(currentTab); 
+    };
+    reader.readAsText(file);
+});
+document.getElementById('searchInput').addEventListener('input', e => { STORES[currentTab].search = e.target.value; renderGeneralTable('mainDataTable', 'mainHead', 'mainBody', currentTab, COLUMNS); });
+document.getElementById('reconSearch').addEventListener('input', e => { STORES.comparison.search = e.target.value; renderGeneralTable('reconTable', 'reconHead', 'reconBody', 'comparison', RECON_COLS); });
 </script>
 </body>
 </html>
