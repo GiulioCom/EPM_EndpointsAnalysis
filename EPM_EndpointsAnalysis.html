@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>EPM Architect - Version Tracker</title>
+    <title>EPM Architect - Asset & Version Intelligence</title>
     <style>
         :root {
             --primary: #2563eb; --dark: #0f172a; --light: #f8fafc;
@@ -14,31 +14,38 @@
         body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--light); margin: 0; padding: 20px; color: var(--dark); }
         .container { max-width: 1700px; margin: 0 auto; }
         
-        /* Stats Dashboard */
-        .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 15px; margin-bottom: 20px; }
+        /* Layout Grid per Dashboard */
+        .dashboard-layout { display: grid; grid-template-columns: 2fr 1fr; gap: 20px; margin-bottom: 20px; }
+        
+        .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
         .stat-card { background: white; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); border-top: 4px solid var(--gray); }
         .stat-card.primary { border-top-color: var(--primary); }
         .stat-card.warning { border-top-color: var(--danger); }
         .stat-card.success { border-top-color: var(--success); }
-        .stat-label { font-size: 0.7rem; color: var(--gray); text-transform: uppercase; font-weight: bold; }
-        .stat-value { font-size: 1.4rem; font-weight: 800; margin-top: 5px; color: var(--dark); }
+        .stat-label { font-size: 0.65rem; color: var(--gray); text-transform: uppercase; font-weight: bold; }
+        .stat-value { font-size: 1.3rem; font-weight: 800; margin-top: 5px; }
 
-        .header-bar { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid var(--primary); padding-bottom: 10px; margin-bottom: 20px; }
+        /* Version Table Card */
+        .version-card { background: white; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); padding: 15px; border-top: 4px solid var(--info); overflow-y: auto; max-height: 200px; }
+        .version-table { width: 100%; border-collapse: collapse; font-size: 0.75rem; }
+        .version-table th { text-align: left; color: var(--gray); border-bottom: 1px solid var(--border); padding: 5px; }
+        .version-table td { padding: 5px; border-bottom: 1px solid #f1f1f1; }
+        .v-count { background: var(--group-bg); padding: 2px 6px; border-radius: 4px; font-weight: bold; color: var(--primary); }
+
+        .header-bar { border-bottom: 2px solid var(--primary); padding-bottom: 10px; margin-bottom: 20px; }
         .toolbar { background: white; padding: 15px; border-radius: 8px; display: flex; gap: 15px; align-items: center; margin-bottom: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
-        .search-input { padding: 8px 12px; border: 1px solid var(--border); border-radius: 6px; width: 300px; outline: none; }
+        .search-input { padding: 8px 12px; border: 1px solid var(--border); border-radius: 6px; width: 300px; }
 
-        .table-wrapper { background: white; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); overflow: auto; max-height: 60vh; }
+        .table-wrapper { background: white; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); overflow: auto; max-height: 55vh; }
         table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
-        th { background: var(--dark); color: white; padding: 12px 10px; text-align: left; position: sticky; top: 0; z-index: 10; white-space: nowrap; }
-        .header-content { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+        th { background: var(--dark); color: white; padding: 12px 10px; text-align: left; position: sticky; top: 0; z-index: 10; }
+        .header-content { display: flex; align-items: center; justify-content: space-between; }
         .col-label { cursor: pointer; flex-grow: 1; }
-        .btn-group { background: none; border: none; color: #64748b; cursor: pointer; font-size: 1rem; border-radius: 4px; padding: 2px 5px; }
-        .btn-group.active { color: #60a5fa; font-weight: bold; background: rgba(255,255,255,0.1); }
+        .btn-group { background: none; border: none; color: #64748b; cursor: pointer; font-size: 1rem; padding: 2px 5px; }
+        .btn-group.active { color: #60a5fa; font-weight: bold; }
         
         td { padding: 8px 10px; border-bottom: 1px solid var(--border); white-space: nowrap; }
-        tr:hover { background-color: #f8fafc; }
-
-        .badge { padding: 3px 8px; border-radius: 12px; font-weight: bold; font-size: 0.7rem; color: white; display: inline-block; min-width: 70px; text-align: center; }
+        .badge { padding: 3px 8px; border-radius: 12px; font-weight: bold; font-size: 0.7rem; color: white; display: inline-block; min-width: 65px; text-align: center; }
         .bg-valid { background-color: var(--success); }
         .bg-old { background-color: var(--danger); }
         .bg-nodate { background-color: var(--gray); }
@@ -54,15 +61,25 @@
 
     <div class="toolbar">
         <input type="file" id="csvFileInput" accept=".csv">
-        <input type="text" id="searchInput" class="search-input" placeholder="Quick search..." disabled>
+        <input type="text" id="searchInput" class="search-input" placeholder="Search data..." disabled>
     </div>
 
-    <div class="stats-grid" id="statsGrid">
-        <div class="stat-card primary"><div class="stat-label">Total Endpoints</div><div class="stat-value" id="statTotal">0</div></div>
-        <div class="stat-card success"><div class="stat-label">Unique Hostnames</div><div class="stat-value" id="statUnique">0</div></div>
-        <div class="stat-card warning"><div class="stat-label">Dup: Computers</div><div class="stat-value" id="statDupComp">0</div></div>
-        <div class="stat-card warning"><div class="stat-label">Dup: Agent IDs</div><div class="stat-value" id="statDupAgent">0</div></div>
-        <div class="stat-card warning"><div class="stat-label">Dup: New Agent IDs</div><div class="stat-value" id="statDupNewAgent">0</div></div>
+    <div class="dashboard-layout">
+        <div class="stats-grid">
+            <div class="stat-card primary"><div class="stat-label">Total Endpoints</div><div class="stat-value" id="statTotal">0</div></div>
+            <div class="stat-card success"><div class="stat-label">Unique Hostnames</div><div class="stat-value" id="statUnique">0</div></div>
+            <div class="stat-card warning"><div class="stat-label">Dup: Computers</div><div class="stat-value" id="statDupComp">0</div></div>
+            <div class="stat-card warning"><div class="stat-label">Dup: Agent IDs</div><div class="stat-value" id="statDupAgent">0</div></div>
+            <div class="stat-card warning"><div class="stat-label">Dup: New Agent IDs</div><div class="stat-value" id="statDupNewAgent">0</div></div>
+        </div>
+
+        <div class="version-card">
+            <div class="stat-label" style="margin-bottom: 10px;">Agent Version Distribution</div>
+            <table class="version-table">
+                <thead><tr><th>Version</th><th>Count</th></tr></thead>
+                <tbody id="versionStatBody"></tbody>
+            </table>
+        </div>
     </div>
 
     <div class="table-wrapper">
@@ -75,7 +92,7 @@
 
 <script>
 /**
- * ARCHITECT'S ENGINE - AGENT VERSION INTEGRATED
+ * ARCHITECT'S ENGINE - VERSION ANALYTICS INTEGRATED
  */
 const CONFIG_ENTITIES = [
     { label: "Computer", csv: "Computer", virtual: "Dup:Computer" },
@@ -83,7 +100,6 @@ const CONFIG_ENTITIES = [
     { label: "New Agent Id", csv: "New Agent Id", virtual: "Dup:NewAgentId" }
 ];
 
-// Added "Agent Version" to display order
 const DISPLAY_ORDER = [
     "Dup:Computer", "Dup:AgentId", "Dup:NewAgentId", 
     "Computer", "Agent Id", "New Agent Id", 
@@ -98,7 +114,8 @@ const elements = {
     search: document.getElementById('searchInput'),
     tbody: document.getElementById('tableBody'),
     thead: document.getElementById('headRow'),
-    title: document.getElementById('reportTitle')
+    title: document.getElementById('reportTitle'),
+    versionTbody: document.getElementById('versionStatBody')
 };
 
 const statsElems = {
@@ -131,15 +148,14 @@ function parseCSV(text) {
     if (lines.length < 1) return;
     const headers = lines[0].split(',').map(h => h.trim());
     
-    // Set Title
     const sIdx = headers.indexOf("SetName");
     if (sIdx !== -1 && lines[1]) elements.title.textContent = lines[1].split(',')[sIdx];
 
-    // Source keys mapping (added Agent Version)
     const csvKeys = ["Computer", "Agent Id", "New Agent Id", "Agent Version", "Agent Status", "Last Seen", "Logged In"];
     const colMap = csvKeys.map(k => ({ k, idx: headers.indexOf(k) })).filter(x => x.idx !== -1);
 
     const groups = { "Computer": {}, "Agent Id": {}, "New Agent Id": {} };
+    const versionCounts = {};
     const uniqueHostnames = new Set();
     
     const rows = lines.slice(1).map(line => {
@@ -148,6 +164,10 @@ function parseCSV(text) {
         colMap.forEach(c => row[c.k] = cells[c.idx]?.trim() || "");
         
         if (row["Computer"]) uniqueHostnames.add(row["Computer"]);
+        
+        // Version counting
+        const v = row["Agent Version"] || "Unknown";
+        versionCounts[v] = (versionCounts[v] || 0) + 1;
 
         CONFIG_ENTITIES.forEach(entity => {
             const val = row[entity.csv];
@@ -159,6 +179,7 @@ function parseCSV(text) {
         return row;
     });
 
+    // Election Logic
     const winners = { "Computer": new Set(), "Agent Id": new Set(), "New Agent Id": new Set() };
     const dupCounts = { "Computer": 0, "Agent Id": 0, "New Agent Id": 0 };
 
@@ -186,11 +207,18 @@ function parseCSV(text) {
         return r;
     });
 
+    // Dashboard Update
     statsElems.total.textContent = rows.length;
     statsElems.unique.textContent = uniqueHostnames.size;
     statsElems.dupComp.textContent = dupCounts["Computer"];
     statsElems.dupAgent.textContent = dupCounts["Agent Id"];
     statsElems.dupNewAgent.textContent = dupCounts["New Agent Id"];
+
+    // Version Table Render
+    elements.versionTbody.innerHTML = Object.entries(versionCounts)
+        .sort((a,b) => b[1] - a[1])
+        .map(([ver, count]) => `<tr><td>${ver}</td><td><span class="v-count">${count}</span></td></tr>`)
+        .join('');
 }
 
 function applyFiltersAndRender() {
@@ -206,7 +234,6 @@ function applyFiltersAndRender() {
                 vB = vB === "no" ? 1 : parseInt(vB);
                 return APP_STATE.sortAsc ? vA - vB : vB - vA;
             }
-            // For Agent Version, numeric sort works better (e.g. 10.0.0.1 < 10.0.0.2)
             return APP_STATE.sortAsc ? 
                 String(vA).localeCompare(String(vB), undefined, {numeric: true}) : 
                 String(vB).localeCompare(String(vA), undefined, {numeric: true});
