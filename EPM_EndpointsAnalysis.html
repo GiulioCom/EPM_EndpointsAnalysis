@@ -165,6 +165,14 @@
         .row-mc-only { background-color: var(--mc-only) !important; }
         .row-ep-only { background-color: var(--ep-only) !important; }
         .btn-group { background: rgba(255,255,255,0.1); border: none; color: #94a3b8; cursor: pointer; padding: 2px 6px; border-radius: 4px; font-size: 0.7rem; }
+
+        /* Colora la singola cella se il valore manca nell'altro report */
+        .cell-mismatch {
+            background-color: #fef08a !important; /* Giallo chiaro (warning) */
+            color: #854d0e !important;           /* Testo marrone scuro per contrasto */
+            font-weight: bold;
+            border: 1px solid #facc15;
+        }
     </style>
 </head>
 <body>
@@ -254,7 +262,7 @@
 <script>
 const EXCLUDED_GUID = "00000000-0000-0000-0000-000000000000";
 const COLUMNS = ["Dup:Computer", "Dup:AgentId", "Dup:NewAgentId", "Computer", "Agent Id", "New Agent Id", "Agent Version", "Agent Status", "Last Seen", "Logged In"];
-const RECON_COLS = ["Computer", "Agent Id", "New Agent Id", "Agent Version", "Agent Status", "Last Seen", "Logged In"];
+const RECON_COLS = ["Source", "Computer", "Agent Id", "New Agent Id", "Agent Version", "Agent Status", "Last Seen"];
 
 let currentTab = 'endpoints';
 let STORES = {
@@ -435,17 +443,39 @@ function renderGeneralTable(tableId, headId, bodyId, storeId, columns) {
 
 function createRow(r, cols) {
     const tr = document.createElement('tr');
+    
+    // Applica la classe alla riga (es. row-mc-only o row-ep-only)
     if (r._srcClass) tr.className = r._srcClass;
+
     cols.forEach(col => {
         const td = document.createElement('td');
+        
+        // 1. GESTIONE DEI DUPLICATI (Badge colorati esistenti)
         if (col.startsWith("Dup:")) {
             const vKey = col.replace(/\s/g, "");
             const state = r["_" + vKey + "_state"];
             const cls = state === "single" || state === "recent" ? "bg-valid" : (state === "nodate" ? "bg-nodate" : "bg-old");
             td.innerHTML = `<span class="badge ${cls}">${r[col]} ${r[col]==='no'?'':'entries'}</span>`;
-        } else td.textContent = r[col] || "";
+        } 
+        // 2. GESTIONE DELLE DISCREPANZE (Giallo per Comparison)
+        else {
+            td.textContent = r[col] || "";
+            
+            // Se la colonna è marcata come mismatch, aggiungi la classe gialla
+            if (r._mismatches && r._mismatches[col] === true) {
+                td.classList.add('cell-mismatch');
+            }
+            
+            // Stile speciale per la colonna Source (opzionale, per leggibilità)
+            if (col === "Source") {
+                td.style.fontWeight = "bold";
+                td.style.color = "var(--primary)";
+            }
+        }
+        
         tr.appendChild(td);
     });
+    
     return tr;
 }
 
@@ -556,19 +586,72 @@ function calcDiffVersions() {
 }
 
 function switchTab(id) {
-    currentTab = id;
+currentTab = id;
     document.querySelectorAll('.tab-button').forEach(b => b.classList.toggle('active', b.id.includes(id)));
     document.getElementById('view-data').classList.toggle('active', id !== 'comparison');
     document.getElementById('view-comparison').classList.toggle('active', id === 'comparison');
+    
     updateTitles();
+
     if (id === 'comparison') {
         const ep = STORES.endpoints, mc = STORES.mycomputers, c = STORES.comparison;
+
+        // 1. Calcolo Delta base
         document.getElementById('compDeltaTotal').textContent = mc.raw.length - ep.raw.length;
-        const epSet = new Set(ep.raw.map(r => r.Computer)), mcSet = new Set(mc.raw.map(r => r.Computer));
-        document.getElementById('compDeltaUnique').textContent = mcSet.size - epSet.size;
-        c.raw = [...mc.raw.filter(r => !epSet.has(r.Computer)).map(r => ({...r, _srcClass: 'row-mc-only'})), ...ep.raw.filter(r => !mcSet.has(r.Computer)).map(r => ({...r, _srcClass: 'row-ep-only'}))];
+        
+        // 2. Creazione dei Set per il confronto multi-campo
+        const epSet = {
+            comp: new Set(ep.raw.map(r => r.Computer)),
+            aid:  new Set(ep.raw.map(r => r["Agent Id"])),
+            naid: new Set(ep.raw.map(r => r["New Agent Id"]))
+        };
+
+        const mcSet = {
+            comp: new Set(mc.raw.map(r => r.Computer)),
+            aid:  new Set(mc.raw.map(r => r["Agent Id"])),
+            naid: new Set(mc.raw.map(r => r["New Agent Id"]))
+        };
+
+        document.getElementById('compDeltaUnique').textContent = mcSet.comp.size - epSet.comp.size;
+
+        // 3. Funzione interna per mappare le discrepanze (giallo)
+        const mapMismatches = (row, targetSets, sourceName, rowClass) => {
+            return {
+                ...row,
+                Source: sourceName,
+                _srcClass: rowClass,
+                _mismatches: {
+                    "Computer": !targetSets.comp.has(row.Computer),
+                    "Agent Id": !targetSets.aid.has(row["Agent Id"]),
+                    "New Agent Id": !targetSets.naid.has(row["New Agent Id"])
+                }
+            };
+        };
+
+        // 4. Generazione dati Comparison: entra una riga se ALMENO uno dei 3 campi manca nell'altro store
+        c.raw = [
+            // Da MyComputer che mancano (in tutto o in parte) in Endpoints
+            ...mc.raw.filter(r => 
+                !epSet.comp.has(r.Computer) || 
+                !epSet.aid.has(r["Agent Id"]) || 
+                !epSet.naid.has(r["New Agent Id"])
+            ).map(r => mapMismatches(r, epSet, 'MyComputer', 'row-mc-only')),
+
+            // Da Endpoints che mancano (in tutto o in parte) in MyComputer
+            ...ep.raw.filter(r => 
+                !mcSet.comp.has(r.Computer) || 
+                !mcSet.aid.has(r["Agent Id"]) || 
+                !mcSet.naid.has(r["New Agent Id"])
+            ).map(r => mapMismatches(r, mcSet, 'Endpoints', 'row-ep-only'))
+        ];
+
         document.getElementById('compDiscCount').textContent = c.raw.length;
-        calcVersions('endpoints'); calcVersions('mycomputers'); calcDiffVersions();
+
+        calcVersions('endpoints'); 
+        calcVersions('mycomputers'); 
+        calcDiffVersions();
+        
+        // Assicurati che RECON_COLS includa "Source" se vuoi vederlo a video
         renderGeneralTable('reconTable', 'reconHead', 'reconBody', 'comparison', RECON_COLS);
     } else {
         const s = STORES[id];
