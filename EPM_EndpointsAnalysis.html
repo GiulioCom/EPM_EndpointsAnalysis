@@ -42,7 +42,14 @@
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
         }
-        
+
+        /* Click Card */
+        .stat-card.filter-active {
+            background: var(--light);
+            color: black;
+            border-top-color: var(--dark);
+        }
+
         /* Navigation */
         .tab-nav { background: var(--dark); padding: 10px 20px 0 20px; display: flex; gap: 5px; position: sticky; top: 0; z-index: 100; }
         .tab-button { background: #1e293b; color: #94a3b8; border: none; padding: 12px 25px; border-radius: 8px 8px 0 0; cursor: pointer; font-weight: 600; transition: all 0.2s; }
@@ -142,9 +149,9 @@
             <div class="stats-grid">
                 <div class="stat-card" style="border-top-color: var(--primary)">Total Records <b id="statTotal">0</b></div>
                 <div class="stat-card" style="border-top-color: var(--success)">Unique Hosts <b id="statUnique">0</b></div>
-                <div class="stat-card" style="border-top-color: var(--warning)">Duplicate Computer <b id="statDupComp">0</b></div>
-                <div class="stat-card" style="border-top-color: var(--warning)">Duplicate Agent Id<b id="statDupAgentId">0</b></div>
-                <div class="stat-card" style="border-top-color: var(--warning)">Duplicate New Agent Id<b id="statDupNewAgentId">0</b></div>
+                <div class="stat-card" onclick="toggleStatFilter('comp')" style="cursor:pointer">Duplicate by Computer <b id="statDupComp">0</b></div>
+                <div class="stat-card" onclick="toggleStatFilter('agent')" style="cursor:pointer">Duplicate by Agent ID <b id="statDupAgentId">0</b></div>
+                <div class="stat-card" onclick="toggleStatFilter('newagent')" style="cursor:pointer">Duplicate by New Agent ID <b id="statDupNewAgentId">0</b></div>
             </div>
             
             <div class="table-container" style="max-height: 250px; border-top: 4px solid var(--info);">
@@ -285,10 +292,9 @@ function renderGeneralTable(tableId, headId, bodyId, storeId, columns) {
     const head = document.getElementById(headId);
     const body = document.getElementById(bodyId);
     if (!body) return;
-
     if (headId) {
         let data = [...s.raw];
-        
+
         if (s.search) {
             const term = s.search.toLowerCase();
             data = data.filter(r => Object.values(r).some(v => 
@@ -296,12 +302,20 @@ function renderGeneralTable(tableId, headId, bodyId, storeId, columns) {
             ));
         }
 
+        if (s.activeFilter) {
+            data = data.filter(r => {
+                if (s.activeFilter === 'comp') return r['Dup:Computer'] !== 'no';
+                if (s.activeFilter === 'agent') return r['Dup:AgentId'] !== 'no';
+                if (s.activeFilter === 'newagent') return r['Dup:NewAgentId'] !== 'no';
+                return true;
+            });
+        }
+
         if (s.sortBy) {
             data.sort((a, b) => {
                 let vA = a[s.sortBy], vB = b[s.sortBy];
                 if (String(s.sortBy).startsWith("Dup:")) {
-                    vA = vA === "no" ? 1 : parseInt(vA); 
-                    vB = vB === "no" ? 1 : parseInt(vB);
+                    vA = vA === "no" ? 1 : parseInt(vA); vB = vB === "no" ? 1 : parseInt(vB);
                     return s.sortAsc ? vA - vB : vB - vA;
                 }
                 return s.sortAsc ? 
@@ -311,7 +325,7 @@ function renderGeneralTable(tableId, headId, bodyId, storeId, columns) {
         }
         
         s.filtered = data;
-        body.innerHTML = "";
+        body.innerHTML = ""; // Reset totale solo se headId è presente
         
         if (head) {
             head.innerHTML = columns.map(col => `
@@ -325,39 +339,43 @@ function renderGeneralTable(tableId, headId, bodyId, storeId, columns) {
                 </th>`).join('');
         }
     } else {
-        if (body.lastElementChild) body.lastElementChild.remove();
+        const oldSentinel = body.querySelector('.sentinel-row');
+        if (oldSentinel) oldSentinel.remove();
     }
 
     if (s.groupBy) {
+        body.innerHTML = ""; 
         const grouped = s.filtered.reduce((acc, r) => { 
             const k = r[s.groupBy] || "N/A"; 
             if (!acc[k]) acc[k] = []; acc[k].push(r); return acc; 
         }, {});
-        
-        body.innerHTML = "";
         Object.entries(grouped).forEach(([k, rows]) => {
             body.insertAdjacentHTML('beforeend', `<tr><td colspan="100%" class="row-group-head">${s.groupBy}: ${k} (${rows.length})</td></tr>`);
             rows.forEach(r => body.appendChild(createRow(r, columns)));
         });
     } else {
-        const start = headId ? 0 : s.visibleCount - 100;
+        const start = headId ? 0 : body.children.length; 
         const chunk = s.filtered.slice(start, s.visibleCount);
         
-        chunk.forEach(r => body.appendChild(createRow(r, columns)));
+        const fragment = document.createDocumentFragment();
+        chunk.forEach(r => fragment.appendChild(createRow(r, columns)));
+        body.appendChild(fragment);
 
         if (s.visibleCount < s.filtered.length) {
             const sentinel = document.createElement('tr');
-            sentinel.style.background = "#f8fafc";
-            sentinel.innerHTML = `
-                <td colspan="${columns.length}" style="text-align:center; padding:20px; color:var(--primary); font-weight:bold; border-top:1px solid var(--border)">
-                    Loading more records (${s.visibleCount} / ${s.filtered.length})...
-                </td>`;
+            sentinel.className = 'sentinel-row';
+            sentinel.innerHTML = `<td colspan="${columns.length}" style="text-align:center; padding:20px; color:var(--primary); font-weight:bold; background:#f8fafc;">
+                Loading more records (${s.visibleCount} / ${s.filtered.length})...
+            </td>`;
             body.appendChild(sentinel);
             
             const observer = new IntersectionObserver((entries) => {
-                if (entries[0].isIntersecting) {
+                // entries[0].isIntersecting deve essere vero E il loader deve essere spento
+                // per evitare conflitti durante il caricamento iniziale del file
+                if (entries[0].isIntersecting && document.getElementById('loader').style.display !== 'flex') {
+                    observer.disconnect(); 
                     s.visibleCount += 100;
-                    observer.disconnect();
+                    // Chiamata per append (null, null)
                     renderGeneralTable(null, null, bodyId, storeId, columns);
                 }
             }, { threshold: 0.1, rootMargin: '100px' });
@@ -416,7 +434,6 @@ function calculateDelta() {
     const epMap = Object.fromEntries(ep.versions.map(v => [v.ver, v.count]));
     const mcMap = Object.fromEntries(mc.versions.map(v => [v.ver, v.count]));
 
-    // Formula: Endpoints - MyComputer
     c.delta = Array.from(allVers).map(ver => ({ 
         ver, 
         diff: (epMap[ver] || 0) - (mcMap[ver] || 0) 
@@ -468,11 +485,50 @@ function switchTab(id) {
     }
 }
 
+
 // --- HANDLERS ---
-window.handleSort = (sid, col) => { const s = STORES[sid]; if(s.sortBy === col) s.sortAsc = !s.sortAsc; else { s.sortBy = col; s.sortAsc = true; } if(sid === 'comparison') renderGeneralTable('reconTable', 'reconHead', 'reconBody', 'comparison', RECON_COLS); else renderGeneralTable('mainDataTable', 'mainHead', 'mainBody', sid, COLUMNS); };
-window.handleGroup = (sid, col) => { const s = STORES[sid]; s.groupBy = s.groupBy === col ? null : col; if(sid === 'comparison') renderGeneralTable('reconTable', 'reconHead', 'reconBody', 'comparison', RECON_COLS); else renderGeneralTable('mainDataTable', 'mainHead', 'mainBody', sid, COLUMNS); };
-window.sortVersions = (loc, key) => { const sid = (loc === 'local') ? currentTab : (loc === 'ep' ? 'endpoints' : 'mycomputers'); const s = STORES[sid]; if(s.vSort === key) s.vAsc = !s.vAsc; else { s.vSort = key; s.vAsc = (key === 'ver'); } refreshVersions(sid); };
-window.sortVersionsDelta = (key) => { const c = STORES.comparison; if(c.dSort === key) c.dAsc = !c.dAsc; else { c.dSort = key; c.dAsc = (key === 'ver'); } calculateDelta(); };
+window.handleSort = (sid, col) => {
+    const s = STORES[sid];
+    if(s.sortBy === col) s.sortAsc = !s.sortAsc;
+    else s.sortBy = col; s.sortAsc = true;        
+    if(sid === 'comparison') renderGeneralTable('reconTable', 'reconHead', 'reconBody', 'comparison', RECON_COLS);
+    else renderGeneralTable('mainDataTable', 'mainHead', 'mainBody', sid, COLUMNS);
+};
+
+window.handleGroup = (sid, col) => {
+    const s = STORES[sid]; s.groupBy = s.groupBy === col ? null : col;
+    if(sid === 'comparison') renderGeneralTable('reconTable', 'reconHead', 'reconBody', 'comparison', RECON_COLS);
+    else renderGeneralTable('mainDataTable', 'mainHead', 'mainBody', sid, COLUMNS);
+};
+
+window.sortVersions = (loc, key) => {
+    const sid = (loc === 'local') ? currentTab : (loc === 'ep' ? 'endpoints' : 'mycomputers');
+    const s = STORES[sid]; if(s.vSort === key) s.vAsc = !s.vAsc;
+    else s.vSort = key; s.vAsc = (key === 'ver');
+    refreshVersions(sid);
+};
+
+window.sortVersionsDelta = (key) => {
+    const c = STORES.comparison;
+    if(c.dSort === key) c.dAsc = !c.dAsc;
+    else c.dSort = key; c.dAsc = (key === 'ver');
+    calculateDelta();
+};
+
+window.toggleStatFilter = (type) => {
+    const s = STORES[currentTab];
+    const isDeactivating = (s.activeFilter === type);
+    s.activeFilter = isDeactivating ? null : type;
+    s.visibleCount = 100;
+    renderGeneralTable('mainDataTable', 'mainHead', 'mainBody', currentTab, COLUMNS);
+    document.querySelectorAll('.stat-card').forEach(card => {
+        card.classList.remove('filter-active');
+    });
+    if (s.activeFilter) {
+        const activeCard = document.querySelector(`.stat-card[onclick*="'${type}'"]`);
+        if (activeCard) activeCard.classList.add('filter-active');
+    }
+};
 
 document.getElementById('csvFileInput').addEventListener('change', e => {
     const file = e.target.files[0]; 
@@ -482,6 +538,7 @@ document.getElementById('csvFileInput').addEventListener('change', e => {
     loader.style.display = 'flex';
 
     const reader = new FileReader();
+
     reader.onload = ev => { 
         setTimeout(() => {
             const result = parseCSV(ev.target.result);
