@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>EPM - Endpoints Analysis</title>
     <style>
+        /* ── Design Token Layer ────────────── */
         :root {
             --primary:  #2563eb;
             --dark:     #0f172a;
@@ -68,7 +69,7 @@
 
         /* ── Loading Overlay ─────────────────────────────────────────── */
         #loader {
-            display: none; /* Default hidden state remains here */
+            display: none;
             position: fixed;
             top: 0; left: 0; width: 100%; height: 100%;
             background: var(--overlay-bg);
@@ -130,6 +131,7 @@
             outline-offset: -2px;
         }
 
+        /* ── Upload hidden state ─────────────────────────────────────── */
         #uploadContainer.upload--hidden { visibility: hidden; }
 
         /* ── Layout ──────────────────────────────────────────────────── */
@@ -521,29 +523,84 @@ const COLUMNS = ["Dup:Computer", "Dup:AgentId", "Dup:NewAgentId", "Computer", "A
 const RECON_COLS = ["Source", "Computer", "Agent Id", "New Agent Id", "Agent Version", "Agent Status", "Last Seen"];
 
 let currentTab = 'endpoints';
+
+// _stats  : { unique, dupComp, dupAgent, dupNewAgent } — computed once per load,
+//           read on every tab switch. Avoids 3×N iterations on each tab click.
+// _sets   : { comp, aid, naid } — Set objects for comparison lookups.
+//           Built once per load; shared with the comparison tab to avoid
+//           rebuilding 6 Sets (up to 6×90k iterations) on every tab switch.
+// _versionsDirty : true after a new CSV load. Tells calcVersions to rebuild
+//           the version map from raw data; false once computed so repeated
+//           tab switches skip the O(N) rebuild.
 let STORES = {
-    endpoints:   { raw: [], sortBy: null, sortAsc: true, groupBy: null, search: "", versions: [], vSort: 'count', vAsc: false, setName: "", visibleCount: 100, activeFilter: null },
-    mycomputers: { raw: [], sortBy: null, sortAsc: true, groupBy: null, search: "", versions: [], vSort: 'count', vAsc: false, setName: "", visibleCount: 100, activeFilter: null },
+    endpoints:   { raw: [], sortBy: null, sortAsc: true, groupBy: null, search: "", versions: [], vSort: 'count', vAsc: false, setName: "", visibleCount: 100, activeFilter: null, _stats: null, _sets: null, _versionsDirty: true },
+    mycomputers: { raw: [], sortBy: null, sortAsc: true, groupBy: null, search: "", versions: [], vSort: 'count', vAsc: false, setName: "", visibleCount: 100, activeFilter: null, _stats: null, _sets: null, _versionsDirty: true },
     comparison:  { raw: [], sortBy: null, sortAsc: true, groupBy: null, search: "", delta: [], dSort: 'diff', dAsc: false, visibleCount: 100 }
 };
 
 // --- PARSER ---
+function splitCSVLine(line) {
+    const fields = [];
+    let cur = "";
+    let inQuotes = false;
+
+    for (let i = 0; i < line.length; i++) {
+        const ch = line[i];
+
+        if (inQuotes) {
+            if (ch === '"') {
+                // Peek ahead: two consecutive quotes inside a quoted field = escaped quote
+                if (line[i + 1] === '"') { cur += '"'; i++; }
+                else inQuotes = false; // Closing quote
+            } else {
+                cur += ch;
+            }
+        } else {
+            if      (ch === '"') { inQuotes = true; }
+            else if (ch === ',') { fields.push(cur.trim()); cur = ""; }
+            else                 { cur += ch; }
+        }
+    }
+    fields.push(cur.trim()); // Push the last field
+    return fields;
+}
+
+/**
+ * Safely parses a date string and returns its epoch timestamp.
+ */
+function parseDateSafe(str) {
+    if (!str) return -1;
+    const t = new Date(str).getTime();
+    return isNaN(t) ? -1 : t;
+}
+
 function parseCSV(text) {
+    // Split on CRLF or LF, discard blank lines at end of file
     const lines = text.split(/\r?\n/).filter(l => l.trim() !== "");
     if (lines.length < 2) return { rows: [], setName: "" };
-    const headers = lines[0].split(',').map(h => h.trim());
+
+    const headers = splitCSVLine(lines[0]);
+
     const setNameIdx = headers.indexOf("SetName");
-    let setName = (setNameIdx !== -1 && lines[1]) ? lines[1].split(',')[setNameIdx]?.trim() || "Unknown Set" : "Unknown Set";
+    let setName = "Unknown Set";
+    if (setNameIdx !== -1 && lines[1]) {
+        const firstCells = splitCSVLine(lines[1]);
+        setName = firstCells[setNameIdx] || "Unknown Set";
+    }
 
     const csvKeys = ["Computer", "Agent Id", "New Agent Id", "Agent Version", "Agent Status", "Last Seen", "Logged In"];
-    const colMap = csvKeys.map(k => ({ k, idx: headers.indexOf(k) })).filter(x => x.idx !== -1);
-    const groups = { "Computer": {}, "Agent Id": {}, "New Agent Id": {} };
-    
+    const colMap  = csvKeys.map(k => ({ k, idx: headers.indexOf(k) })).filter(x => x.idx !== -1);
+
+    // Duplicate-detection buckets: key → array of row objects
+    const groups  = { "Computer": {}, "Agent Id": {}, "New Agent Id": {} };
+    const DUP_KEYS = ["Computer", "Agent Id", "New Agent Id"];
+
     const rawRows = lines.slice(1).map(line => {
-        const cells = line.split(',');
-        const row = {};
-        colMap.forEach(c => row[c.k] = cells[c.idx]?.trim() || "");
-        ["Computer", "Agent Id", "New Agent Id"].forEach(k => {
+        const cells = splitCSVLine(line);
+        const row   = {};
+        colMap.forEach(c => { row[c.k] = cells[c.idx] ?? ""; });
+
+        DUP_KEYS.forEach(k => {
             const val = row[k];
             if (val && val !== EXCLUDED_GUID) {
                 if (!groups[k][val]) groups[k][val] = [];
@@ -558,43 +615,65 @@ function parseCSV(text) {
         Object.values(groups[k]).forEach(grp => {
             let win = null, max = -1;
             grp.forEach(r => {
-                const t = r["Last Seen"] ? new Date(r["Last Seen"]).getTime() : -1;
+                const t = parseDateSafe(r["Last Seen"]);
                 if (t > max) { max = t; win = r; }
             });
             if (win) winners[k].add(win);
         });
     });
 
-    const rows = rawRows.map(r => {
-        ["Computer", "Agent Id", "New Agent Id"].forEach(k => {
+    rawRows.forEach(r => {
+        DUP_KEYS.forEach(k => {
             const vKey = "Dup:" + k.replace(/\s/g, "");
-            const grp = groups[k][r[k]] || [r];
+            const grp  = groups[k][r[k]] || [r];
+
             if (k === "New Agent Id" && r[k] === EXCLUDED_GUID) {
-                r[vKey] = "no"; r["_" + vKey + "_state"] = "single";
+                // The all-zeros GUID is a known placeholder — never a real duplicate
+                r[vKey]             = "no";
+                r["_" + vKey + "_state"] = "single";
             } else {
                 r[vKey] = grp.length === 1 ? "no" : grp.length;
-                r["_" + vKey + "_state"] = grp.length === 1 ? "single" : (!r["Last Seen"] ? "nodate" : (winners[k].has(r) ? "recent" : "old"));
+                r["_" + vKey + "_state"] =
+                    grp.length === 1  ? "single" :
+                    !r["Last Seen"]   ? "nodate" :
+                    winners[k].has(r) ? "recent" : "old";
             }
         });
-        return r;
     });
-    return { rows, setName };
+
+    return { rows: rawRows, setName };
 }
 
 function updateTitles() {
     const titleEl  = document.getElementById('reportTitle');
     const uploadEl = document.getElementById('uploadContainer');
-    
+
+    // Clear previous content before rebuilding
+    titleEl.textContent = "";
+
     if (currentTab === 'comparison') {
         uploadEl.classList.add('upload--hidden');
+
         const setEP = STORES.endpoints.setName;
         const setMC = STORES.mycomputers.setName;
-        if (!setEP || !setMC)
-            titleEl.innerHTML = `<span class="text-muted">Load both files to compare</span>`;
-        else if (setEP === setMC)
-            titleEl.innerHTML = `SET: <span class="text-primary">${setEP}</span>`;
-        else
-            titleEl.innerHTML = `<span class="mismatch-alert">⚠️ SET MISMATCH: ${setEP} vs ${setMC}</span>`;
+
+        if (!setEP || !setMC) {
+            const span = document.createElement('span');
+            span.className   = 'text-muted';
+            span.textContent = 'Load both files to compare';
+            titleEl.appendChild(span);
+        } else if (setEP === setMC) {
+            titleEl.appendChild(document.createTextNode('SET: '));
+            const span = document.createElement('span');
+            span.className   = 'text-primary';
+            span.textContent = setEP;
+            titleEl.appendChild(span);
+        } else {
+            const span = document.createElement('span');
+            span.className   = 'mismatch-alert';
+            span.textContent = `\u26A0\uFE0F SET MISMATCH: ${setEP} vs ${setMC}`;
+            titleEl.appendChild(span);
+        }
     } else {
         uploadEl.classList.remove('upload--hidden');
         const name = STORES[currentTab].setName;
@@ -602,24 +681,40 @@ function updateTitles() {
     }
 }
 
-function renderGeneralTable(tableId, headId, bodyId, storeId, columns) {
-    const s = STORES[storeId];
+/**
+ * Renders (or appends to) a data table from a STORE.
+ *
+ * @param {string|null} headId  - ID of the <tr> inside <thead>, or null for append mode
+ * @param {string}      bodyId  - ID of the <tbody> to write into
+ * @param {string}      storeId - Key into the STORES object
+ * @param {string[]}    columns - Column definitions to render
+ */
+function renderGeneralTable(headId, bodyId, storeId, columns) {
+    const s    = STORES[storeId];
     const head = document.getElementById(headId);
     const body = document.getElementById(bodyId);
     if (!body) return;
+
     if (headId) {
+        if (s._observer) { s._observer.disconnect(); s._observer = null; }
+
         let data = [...s.raw];
 
         if (s.search) {
             const term = s.search.toLowerCase();
-            data = data.filter(r => Object.values(r).some(v => String(v).toLowerCase().includes(term)));
+            data = data.filter(r =>
+                Object.keys(r).some(k =>
+                    !k.startsWith('_') &&
+                    String(r[k]).toLowerCase().includes(term)
+                )
+            );
         }
 
         if (s.activeFilter) {
             data = data.filter(r => {
-                if (s.activeFilter === 'comp')     return r['Dup:Computer'] !== 'no';
-                if (s.activeFilter === 'agent')    return r['Dup:AgentId'] !== 'no';
-                if (s.activeFilter === 'newagent') return r['Dup:NewAgentId'] !== 'no';
+                if (s.activeFilter === 'comp')     return r['Dup:Computer']     !== 'no';
+                if (s.activeFilter === 'agent')    return r['Dup:AgentId']      !== 'no';
+                if (s.activeFilter === 'newagent') return r['Dup:NewAgentId']   !== 'no';
                 return true;
             });
         }
@@ -632,15 +727,15 @@ function renderGeneralTable(tableId, headId, bodyId, storeId, columns) {
                     vB = vB === "no" ? 1 : parseInt(vB);
                     return s.sortAsc ? vA - vB : vB - vA;
                 }
-                return s.sortAsc ?
-                    String(vA).localeCompare(String(vB), undefined, { numeric: true }) :
-                    String(vB).localeCompare(String(vA), undefined, { numeric: true });
+                return s.sortAsc
+                    ? String(vA).localeCompare(String(vB), undefined, { numeric: true })
+                    : String(vB).localeCompare(String(vA), undefined, { numeric: true });
             });
         }
-        
-        s.filtered = data;
+
+        s.filtered   = data;
         body.innerHTML = "";
-        
+
         if (head) {
             head.innerHTML = columns.map(col => `
                 <th>
@@ -652,7 +747,9 @@ function renderGeneralTable(tableId, headId, bodyId, storeId, columns) {
                     </div>
                 </th>`).join('');
         }
+
     } else {
+        // ── Append mode (lazy-load next chunk) ────────────────────────
         const oldSentinel = body.querySelector('.sentinel-row');
         if (oldSentinel) oldSentinel.remove();
     }
@@ -665,36 +762,45 @@ function renderGeneralTable(tableId, headId, bodyId, storeId, columns) {
             acc[k].push(r);
             return acc;
         }, {});
+
         Object.entries(grouped).forEach(([k, rows]) => {
-            body.insertAdjacentHTML('beforeend', `<tr><td colspan="100%" class="row-group-head">${s.groupBy}: ${k} (${rows.length})</td></tr>`);
+            const tr  = document.createElement('tr');
+            const td  = document.createElement('td');
+            td.colSpan   = 100;
+            td.className = 'row-group-head';
+            td.textContent = `${s.groupBy}: ${k} (${rows.length})`;
+            tr.appendChild(td);
+            body.appendChild(tr);
             rows.forEach(r => body.appendChild(createRow(r, columns)));
         });
+
     } else {
         const start = headId ? 0 : body.children.length;
         const chunk = s.filtered.slice(start, s.visibleCount);
-        
+
         const fragment = document.createDocumentFragment();
         chunk.forEach(r => fragment.appendChild(createRow(r, columns)));
         body.appendChild(fragment);
 
         if (s.visibleCount < s.filtered.length) {
-            const sentinel = document.createElement('tr');
+            const sentinel    = document.createElement('tr');
             sentinel.className = 'sentinel-row';
             sentinel.innerHTML = `<td colspan="${columns.length}">
                 Loading more records (${s.visibleCount} / ${s.filtered.length})...
             </td>`;
             body.appendChild(sentinel);
-            
-            const observer = new IntersectionObserver((entries) => {
+
+            s._observer = new IntersectionObserver((entries) => {
                 const loaderActive = document.getElementById('loader').classList.contains('loader--active');
                 if (entries[0].isIntersecting && !loaderActive) {
-                    observer.disconnect();
+                    s._observer.disconnect();
+                    s._observer = null;
                     s.visibleCount += 100;
-                    renderGeneralTable(null, null, bodyId, storeId, columns);
+                    renderGeneralTable(null, bodyId, storeId, columns);
                 }
             }, { threshold: 0.1, rootMargin: '100px' });
-            
-            observer.observe(sentinel);
+
+            s._observer.observe(sentinel);
         }
     }
 }
@@ -725,38 +831,72 @@ function createRow(r, cols) {
     return tr;
 }
 
+/**
+ * Aggregates version array into ready/notReady counts and a percentage.
+ */
 function getAgentStats(versionsArray) {
     let total = 0, notReady = 0;
     versionsArray.forEach(v => {
-        total += v.count;
-        if (getVersionStatusClass(v.ver) === 'ver-endpointsnotready') notReady += v.count;
+        const count = Math.max(0, v.count); // clamp negatives — see above
+        total    += count;
+        if (getVersionStatusClass(v.ver) === 'ver-endpointsnotready') notReady += count;
     });
     const percent = total > 0 ? ((notReady / total) * 100).toFixed(1) : 0;
     return { total, notReady, percent };
 }
 
+/**
+ * Version class cache — module-level Map, lives for the whole session.
+ */
+const _versionClassCache = new Map();
+
 function getVersionStatusClass(verString) {
-    if (!verString || verString === "Unknown") return 'ver-endpointsnotready';
-    const parts = verString.split('.').map(Number);
-    const major = parts[0] || 0, minor = parts[1] || 0;
-    return (major > 25) || (major === 25 && minor >= 12) ? 'ver-endpointsready' : 'ver-endpointsnotready';
+    if (_versionClassCache.has(verString)) return _versionClassCache.get(verString);
+
+    let cls;
+    if (!verString || verString === "Unknown") {
+        cls = 'ver-endpointsnotready';
+    } else {
+        const parts = verString.split('.').map(Number);
+        const major = parts[0] || 0, minor = parts[1] || 0;
+        cls = (major > 25) || (major === 25 && minor >= 12)
+            ? 'ver-endpointsready'
+            : 'ver-endpointsnotready';
+    }
+
+    _versionClassCache.set(verString, cls);
+    return cls;
 }
 
+/**
+ * Builds (or re-uses) the version frequency map for a store, then renders
+ * the appropriate version panel table.
+ */
 function calcVersions(sid) {
     const s = STORES[sid];
-    const map = {};
-    s.raw.forEach(r => { const v = r["Agent Version"] || "Unknown"; map[v] = (map[v] || 0) + 1; });
-    s.versions = Object.entries(map).map(([ver, count]) => ({ ver, count }));
-    
+
+    if (s._versionsDirty) {
+        const map = {};
+        s.raw.forEach(r => {
+            const v = r["Agent Version"] || "Unknown";
+            map[v] = (map[v] || 0) + 1;
+        });
+        s.versions       = Object.entries(map).map(([ver, count]) => ({ ver, count }));
+        s._versionsDirty = false; // mark clean — won't rebuild until next CSV load
+    }
+
     const stats  = getAgentStats(s.versions);
-    const target = (currentTab === sid) ? 'localVersionBody' : (sid === 'endpoints' ? 'compVerEPBody' : 'compVerMCBody');
+    const target = (currentTab === sid) ? 'localVersionBody'
+                 : (sid === 'endpoints'  ? 'compVerEPBody' : 'compVerMCBody');
     const tbody  = document.getElementById(target);
     if (!tbody) return;
 
     const sorted = [...s.versions].sort((a, b) =>
         s.vSort === 'count'
             ? (s.vAsc ? a.count - b.count : b.count - a.count)
-            : (s.vAsc ? a.ver.localeCompare(b.ver, undefined, { numeric: true }) : b.ver.localeCompare(a.ver, undefined, { numeric: true }))
+            : (s.vAsc
+                ? a.ver.localeCompare(b.ver, undefined, { numeric: true })
+                : b.ver.localeCompare(a.ver, undefined, { numeric: true }))
     );
 
     let html = sorted.map(v => `
@@ -817,6 +957,48 @@ function calcDiffVersions() {
     tbody.innerHTML = html;
 }
 
+/**
+ * Pre-computes all derived data that is expensive to produce and stable
+ * between CSV loads. Called ONCE per store per file upload.
+ *
+ * _sets  — three Set objects for O(1) membership tests in the comparison tab.
+ *          Previously, 6 Sets were rebuilt on EVERY comparison tab click
+ *          (6 × 90k iterations). Now built once and reused.
+ *
+ * _stats — aggregated counts for the stat-card panel.
+ *          Previously recomputed inline in switchTab on every tab click
+ *          (3 × 90k iterations per switch). Now a single read from cache.
+ */
+function buildStoreCache(sid) {
+    const s = STORES[sid];
+
+    s._sets = {
+        comp: new Set(s.raw.map(r => r.Computer)),
+        aid:  new Set(s.raw.map(r => r["Agent Id"])),
+        naid: new Set(s.raw.map(r => r["New Agent Id"]))
+    };
+
+    const countDups = k => {
+        const freq = {};
+        s.raw.forEach(r => {
+            if (r[k] && r[k] !== EXCLUDED_GUID)
+                freq[r[k]] = (freq[r[k]] || 0) + 1;
+        });
+        return Object.values(freq).filter(n => n > 1).length;
+    };
+
+    s._stats = {
+        unique:      s._sets.comp.size,
+        dupComp:     countDups('Computer'),
+        dupAgent:    countDups('Agent Id'),
+        dupNewAgent: countDups('New Agent Id')
+    };
+
+    // Signal calcVersions to rebuild the version map on next render
+    s._versionsDirty = true;
+    s.versions = [];
+}
+
 function switchTab(id) {
     currentTab = id;
     document.querySelectorAll('.tab-button').forEach(b => b.classList.toggle('active', b.id.includes(id)));
@@ -829,23 +1011,17 @@ function switchTab(id) {
 
         document.getElementById('compDeltaTotal').textContent = mc.raw.length - ep.raw.length;
 
-        const epSet = {
-            comp: new Set(ep.raw.map(r => r.Computer)),
-            aid:  new Set(ep.raw.map(r => r["Agent Id"])),
-            naid: new Set(ep.raw.map(r => r["New Agent Id"]))
-        };
-        const mcSet = {
-            comp: new Set(mc.raw.map(r => r.Computer)),
-            aid:  new Set(mc.raw.map(r => r["Agent Id"])),
-            naid: new Set(mc.raw.map(r => r["New Agent Id"]))
-        };
+        // CACHED: reuse pre-built Sets — no new Set() construction here.
+        // Fallback to empty Sets if a store has not been loaded yet.
+        const epSets = ep._sets || { comp: new Set(), aid: new Set(), naid: new Set() };
+        const mcSets = mc._sets || { comp: new Set(), aid: new Set(), naid: new Set() };
 
-        document.getElementById('compDeltaUnique').textContent = mcSet.comp.size - epSet.comp.size;
+        document.getElementById('compDeltaUnique').textContent = mcSets.comp.size - epSets.comp.size;
 
         const mapMismatches = (row, targetSets, sourceName, rowClass) => ({
             ...row,
-            Source: sourceName,
-            _srcClass: rowClass,
+            Source:      sourceName,
+            _srcClass:   rowClass,
             _mismatches: {
                 "Computer":     !targetSets.comp.has(row.Computer),
                 "Agent Id":     !targetSets.aid.has(row["Agent Id"]),
@@ -854,31 +1030,31 @@ function switchTab(id) {
         });
 
         c.raw = [
-            ...mc.raw.filter(r => !epSet.comp.has(r.Computer) || !epSet.aid.has(r["Agent Id"]) || !epSet.naid.has(r["New Agent Id"]))
-                     .map(r => mapMismatches(r, epSet, 'MyComputer', 'row-mc-only')),
-            ...ep.raw.filter(r => !mcSet.comp.has(r.Computer) || !mcSet.aid.has(r["Agent Id"]) || !mcSet.naid.has(r["New Agent Id"]))
-                     .map(r => mapMismatches(r, mcSet, 'Endpoints', 'row-ep-only'))
+            ...mc.raw
+                .filter(r => !epSets.comp.has(r.Computer) || !epSets.aid.has(r["Agent Id"]) || !epSets.naid.has(r["New Agent Id"]))
+                .map(r => mapMismatches(r, epSets, 'MyComputer', 'row-mc-only')),
+            ...ep.raw
+                .filter(r => !mcSets.comp.has(r.Computer) || !mcSets.aid.has(r["Agent Id"]) || !mcSets.naid.has(r["New Agent Id"]))
+                .map(r => mapMismatches(r, mcSets, 'Endpoints', 'row-ep-only'))
         ];
 
         document.getElementById('compDiscCount').textContent = c.raw.length;
         calcVersions('endpoints');
         calcVersions('mycomputers');
         calcDiffVersions();
-        renderGeneralTable('reconTable', 'reconHead', 'reconBody', 'comparison', RECON_COLS);
+        renderGeneralTable('reconHead', 'reconBody', 'comparison', RECON_COLS);
+
     } else {
         const s = STORES[id];
-        document.getElementById('statTotal').textContent  = s.raw.length;
-        document.getElementById('statUnique').textContent = new Set(s.raw.map(r => r.Computer)).size;
-        const getDups = k => {
-            const m = {};
-            s.raw.forEach(r => { if (r[k] && r[k] !== EXCLUDED_GUID) m[r[k]] = (m[r[k]] || 0) + 1; });
-            return Object.values(m).filter(v => v > 1).length;
-        };
-        document.getElementById('statDupComp').textContent       = getDups('Computer');
-        document.getElementById('statDupAgentId').textContent    = getDups('Agent Id');
-        document.getElementById('statDupNewAgentId').textContent = getDups('New Agent Id');
+        const stats = s._stats || { unique: 0, dupComp: 0, dupAgent: 0, dupNewAgent: 0 };
+        document.getElementById('statTotal').textContent         = s.raw.length;
+        document.getElementById('statUnique').textContent        = stats.unique;
+        document.getElementById('statDupComp').textContent       = stats.dupComp;
+        document.getElementById('statDupAgentId').textContent    = stats.dupAgent;
+        document.getElementById('statDupNewAgentId').textContent = stats.dupNewAgent;
+
         calcVersions(id);
-        renderGeneralTable('mainDataTable', 'mainHead', 'mainBody', id, COLUMNS);
+        renderGeneralTable('mainHead', 'mainBody', id, COLUMNS);
         document.getElementById('searchInput').value = s.search;
     }
 }
@@ -888,15 +1064,15 @@ window.handleSort = (sid, col) => {
     const s = STORES[sid];
     if (s.sortBy === col) s.sortAsc = !s.sortAsc;
     else { s.sortBy = col; s.sortAsc = true; }
-    if (sid === 'comparison') renderGeneralTable('reconTable', 'reconHead', 'reconBody', 'comparison', RECON_COLS);
-    else renderGeneralTable('mainDataTable', 'mainHead', 'mainBody', sid, COLUMNS);
+    if (sid === 'comparison') renderGeneralTable('reconHead', 'reconBody', 'comparison', RECON_COLS);
+    else renderGeneralTable('mainHead', 'mainBody', sid, COLUMNS);
 };
 
 window.handleGroup = (sid, col) => {
     const s = STORES[sid];
     s.groupBy = s.groupBy === col ? null : col;
-    if (sid === 'comparison') renderGeneralTable('reconTable', 'reconHead', 'reconBody', 'comparison', RECON_COLS);
-    else renderGeneralTable('mainDataTable', 'mainHead', 'mainBody', sid, COLUMNS);
+    if (sid === 'comparison') renderGeneralTable('reconHead', 'reconBody', 'comparison', RECON_COLS);
+    else renderGeneralTable('mainHead', 'mainBody', sid, COLUMNS);
 };
 
 window.sortVersions = (loc, key) => {
@@ -918,7 +1094,7 @@ window.toggleStatFilter = type => {
     const s = STORES[currentTab];
     s.activeFilter = s.activeFilter === type ? null : type;
     s.visibleCount = 100;
-    renderGeneralTable('mainDataTable', 'mainHead', 'mainBody', currentTab, COLUMNS);
+    renderGeneralTable('mainHead', 'mainBody', currentTab, COLUMNS);
     document.querySelectorAll('.stat-card').forEach(card => card.classList.remove('filter-active'));
     if (s.activeFilter) {
         const activeCard = document.querySelector(`.stat-card[onclick*="'${type}'"]`);
@@ -939,6 +1115,7 @@ document.getElementById('csvFileInput').addEventListener('change', e => {
             const result = parseCSV(ev.target.result);
             STORES[currentTab].raw     = result.rows;
             STORES[currentTab].setName = result.setName;
+            buildStoreCache(currentTab);
             switchTab(currentTab);
             loader.classList.remove('loader--active');
             e.target.value = "";
@@ -949,12 +1126,12 @@ document.getElementById('csvFileInput').addEventListener('change', e => {
 
 document.getElementById('searchInput').addEventListener('input', e => {
     STORES[currentTab].search = e.target.value;
-    renderGeneralTable('mainDataTable', 'mainHead', 'mainBody', currentTab, COLUMNS);
+    renderGeneralTable('mainHead', 'mainBody', currentTab, COLUMNS);
 });
 
 document.getElementById('reconSearch').addEventListener('input', e => {
     STORES.comparison.search = e.target.value;
-    renderGeneralTable('reconTable', 'reconHead', 'reconBody', 'comparison', RECON_COLS);
+    renderGeneralTable('reconHead', 'reconBody', 'comparison', RECON_COLS);
 });
 </script>
 </body>
