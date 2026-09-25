@@ -172,7 +172,7 @@
             height: 45px;
         }
 
-        .upload-btn {
+        .btn-primary {
             background: var(--primary);
             color: var(--white);
             padding: 8px 16px;
@@ -184,8 +184,8 @@
             transition: filter 0.15s;
         }
 
-        .upload-btn:hover         { filter: brightness(1.12); }
-        .upload-btn:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+        .btn-primary:hover         { filter: brightness(1.12); }
+        .btn-primary:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
 
         #csvFileInput { display: none; }
         .set-title    { margin: 0; font-size: var(--font-lg); font-weight: 700; }
@@ -426,7 +426,7 @@
     
     <div class="report-header">
         <div id="uploadContainer">
-            <label for="csvFileInput" class="upload-btn">UPLOAD CSV</label>
+            <label for="csvFileInput" class="btn-primary">UPLOAD CSV</label>
             <input type="file" id="csvFileInput" accept=".csv">
         </div>
         <div id="titleContainer">
@@ -509,6 +509,9 @@
         <div class="search-bar-container">
             <span class="search-label">Filter Reconciliation:</span>
             <input type="text" id="reconSearch" class="search-input" placeholder="Find specific mismatch...">
+            <button class="btn-primary export-btn" data-target="reconTable" aria-label="Export Reconciliation Table to CSV">
+                Export CSV
+            </button>
         </div>
 
         <div class="table-container table-container--recon">
@@ -1058,6 +1061,140 @@ function switchTab(id) {
         document.getElementById('searchInput').value = s.search;
     }
 }
+
+/**
+ * Safely escapes CSV cell content to prevent data corruption
+ * and mitigates CSV Injection (Formula Injection) vulnerabilities.
+ * 
+ * @param {string} value - Raw cell text
+ * @returns {string} Sanitized and escaped CSV cell string
+ */
+function escapeCSVValue(value) {
+    let stringValue = value ? String(value).trim() : "";
+
+    // Security: Mitigate CSV Injection (Formula Injection).
+    // If a cell value starts with =, +, -, or @, spreadsheet engines 
+    // evaluate it as an executable formula. Prepending a single quote forces text mode.
+    if (/^[=+\-@]/.test(stringValue)) {
+        stringValue = "'" + stringValue; 
+    }
+
+    // Optimization & Integrity: Wrap in quotes if the string contains structural delimiters
+    if (stringValue.includes(',') || stringValue.includes('"') || stringValue.includes('\n')) {
+        stringValue = '"' + stringValue.replace(/"/g, '""') + '"';
+    }
+
+    return stringValue;
+}
+
+/**
+ * Extracts currently filtered and sorted rows from a table and triggers a CSV download.
+ * 
+ * @param {HTMLTableElement} tableElement - The target table DOM node
+ * @param {string} filename - Desired output filename
+ */
+function exportTableToCSV(tableElement, filename) {
+    if (!tableElement || tableElement.tagName !== 'TABLE') {
+        console.error("Invalid DOM node provided for CSV export.");
+        return;
+    }
+
+    const rows = tableElement.querySelectorAll('tr');
+    const csvData = [];
+
+    // Performance: Use a traditional for-loop to eliminate callback allocation overhead in hot paths
+    for (let i = 0; i < rows.length; i++) {
+        const row = rows[i];
+        
+        // Respect search filters: skip rows hidden by your search/filter logic
+        if (row.style.display === 'none') {
+            continue;
+        }
+
+        const cells = row.querySelectorAll('th, td');
+        const rowData = [];
+
+        for (let j = 0; j < cells.length; j++) {
+            // Performance: textContent avoids expensive style reflow calculations (unlike innerText)
+            const cellText = cells[j].textContent;
+            rowData.push(escapeCSVValue(cellText));
+        }
+
+        csvData.push(rowData.join(','));
+    }
+
+    // Compile into standard Windows/Excel line endings
+    const csvString = csvData.join('\r\n');
+    triggerDownload(csvString, filename);
+}
+
+/**
+ * Handles Blob allocation, synthetic anchor creation, and vital memory reclamation.
+ */
+function triggerDownload(content, filename) {
+    // Add UTF-8 BOM (\uFEFF) so Microsoft Excel natively detects UTF-8 encoding
+    const blob = new Blob(['\uFEFF' + content], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', filename);
+    
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+
+    // CRITICAL: Revoke the Object URL to prevent browser memory leaks
+    URL.revokeObjectURL(url);
+}
+
+/**
+ * Automatically wires export listeners to all registered report tables.
+ */
+/**
+ * Automatically wires export listeners to all registered report tables.
+ * Includes defensive checks to catch DOM mapping errors.
+ */
+function initReportExports() {
+    const exportButtons = document.querySelectorAll('.export-btn');
+
+    if (exportButtons.length === 0) {
+        console.warn("Export initialization: No buttons found with class '.export-btn'.");
+        return;
+    }
+
+    // Traditional for-loop for iteration; slightly more memory-efficient 
+    // than .forEach() when wiring up multiple DOM nodes.
+    for (let i = 0; i < exportButtons.length; i++) {
+        const button = exportButtons[i];
+        
+        button.addEventListener('click', function(event) {
+            const targetId = this.getAttribute('data-target');
+            
+            // Defensive programming: validate the attribute exists
+            if (!targetId) {
+                alert("Configuration Error: Export button is missing a 'data-target' attribute.");
+                return;
+            }
+
+            const tableElement = document.getElementById(targetId);
+            
+            // Defensive programming: validate the target exists in the DOM
+            if (!tableElement) {
+                alert(`Configuration Error: Could not find a table with ID '${targetId}'.`);
+                return;
+            }
+            
+            const dateStr = new Date().toISOString().slice(0, 10);
+            const filename = `${targetId}_report_${dateStr}.csv`;
+
+            exportTableToCSV(tableElement, filename);
+        });
+    }
+}
+
+// Initialize when the DOM tree is fully parsed
+document.addEventListener('DOMContentLoaded', initReportExports);
 
 // --- HANDLERS ---
 window.handleSort = (sid, col) => {
