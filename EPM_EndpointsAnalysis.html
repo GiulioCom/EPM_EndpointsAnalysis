@@ -507,9 +507,9 @@
         </div>
 
         <div class="search-bar-container">
-            <span class="search-label">Filter Reconciliation:</span>
+            <span class="search-label">Filter:</span>
             <input type="text" id="reconSearch" class="search-input" placeholder="Find specific mismatch...">
-            <button class="btn-primary export-btn" data-target="reconTable" aria-label="Export Reconciliation Table to CSV">
+            <button type="button" class="btn-primary export-btn" data-target="reconTable" data-store="comparison" aria-label="Export Comparison Table to CSV">
                 Export CSV
             </button>
         </div>
@@ -1088,44 +1088,64 @@ function escapeCSVValue(value) {
 }
 
 /**
- * Extracts currently filtered and sorted rows from a table and triggers a CSV download.
+ * Generates a CSV directly from the in-memory data model rather than the DOM.
  * 
- * @param {HTMLTableElement} tableElement - The target table DOM node
+ * @param {Array<string>} headers - Array of column header names
+ * @param {Array<Array<any>>} dataArray - A 2D array containing the filtered/sorted data
  * @param {string} filename - Desired output filename
  */
-function exportTableToCSV(tableElement, filename) {
-    if (!tableElement || tableElement.tagName !== 'TABLE') {
-        console.error("Invalid DOM node provided for CSV export.");
-        return;
+function exportDataArrayToCSV(headers, dataArray, filename) {
+    // Pre-allocate the array to avoid memory reallocation during push operations
+    const csvRows = new Array(dataArray.length + (headers ? 1 : 0));
+    let rowIndex = 0;
+
+    // 1. Process Headers
+    if (headers && headers.length > 0) {
+        const safeHeaders = new Array(headers.length);
+        for (let i = 0; i < headers.length; i++) {
+            safeHeaders[i] = escapeCSVValue(headers[i]);
+        }
+        csvRows[rowIndex++] = safeHeaders.join(',');
     }
 
-    const rows = tableElement.querySelectorAll('tr');
-    const csvData = [];
-
-    // Performance: Use a traditional for-loop to eliminate callback allocation overhead in hot paths
-    for (let i = 0; i < rows.length; i++) {
-        const row = rows[i];
+    // 2. Process Data Body
+    // We iterate over the raw data in memory, bypassing the DOM entirely.
+    for (let i = 0; i < dataArray.length; i++) {
+        const rowData = dataArray[i];
+        const safeRow = new Array(rowData.length);
         
-        // Respect search filters: skip rows hidden by your search/filter logic
-        if (row.style.display === 'none') {
-            continue;
+        for (let j = 0; j < rowData.length; j++) {
+            safeRow[j] = escapeCSVValue(rowData[j]);
         }
-
-        const cells = row.querySelectorAll('th, td');
-        const rowData = [];
-
-        for (let j = 0; j < cells.length; j++) {
-            // Performance: textContent avoids expensive style reflow calculations (unlike innerText)
-            const cellText = cells[j].textContent;
-            rowData.push(escapeCSVValue(cellText));
-        }
-
-        csvData.push(rowData.join(','));
+        csvRows[rowIndex++] = safeRow.join(',');
     }
 
     // Compile into standard Windows/Excel line endings
-    const csvString = csvData.join('\r\n');
+    const csvString = csvRows.join('\r\n');
     triggerDownload(csvString, filename);
+}
+
+/**
+ * Dynamically extracts and cleans column headers from the table's DOM.
+ * Acts as a strict schema filter for our CSV export.
+ * 
+ * @param {HTMLElement} tableElement - The target table DOM node
+ * @returns {Array<string>} An array of exact property keys required
+ */
+function extractHeadersFromDOM(tableElement) {
+    const headerCells = tableElement.querySelectorAll('thead th');
+    const headers = new Array(headerCells.length);
+
+    for (let i = 0; i < headerCells.length; i++) {
+        let rawText = headerCells[i].textContent || "";
+        
+        // Security & Integrity: Strip out your specific sorting (↑/↓) 
+        // and grouping (⊞) artifacts so the string perfectly matches 
+        // the JavaScript object property key.
+        headers[i] = rawText.replace(/[▲▼↑↓⊞]/g, '').trim();
+    }
+
+    return headers;
 }
 
 /**
@@ -1149,46 +1169,77 @@ function triggerDownload(content, filename) {
 }
 
 /**
- * Automatically wires export listeners to all registered report tables.
+ * A lightweight registry mapping DOM target IDs to their underlying in-memory data.
+ * This separates the View (HTML) from the Model (Data), achieving O(1) lookups.
  */
+const DataExportRegistry = {
+    'reconTable': {
+        // Getter function ensures we fetch the data exactly as it is right now,
+        // respecting any live search filters the user just applied.
+        getData: function() { return currentFilteredReconData; } 
+    },
+    // You will add your other 8 tables here...
+    // 'endpointsStatus': { getHeaders: ..., getData: ... }
+};
+
 /**
- * Automatically wires export listeners to all registered report tables.
- * Includes defensive checks to catch DOM mapping errors.
+ * Wires export listeners to buttons, using the DOM headers to securely 
+ * pluck only the permitted data from the STORES state machine.
  */
 function initReportExports() {
     const exportButtons = document.querySelectorAll('.export-btn');
 
-    if (exportButtons.length === 0) {
-        console.warn("Export initialization: No buttons found with class '.export-btn'.");
-        return;
-    }
+    if (exportButtons.length === 0) return;
 
-    // Traditional for-loop for iteration; slightly more memory-efficient 
-    // than .forEach() when wiring up multiple DOM nodes.
     for (let i = 0; i < exportButtons.length; i++) {
-        const button = exportButtons[i];
-        
-        button.addEventListener('click', function(event) {
-            const targetId = this.getAttribute('data-target');
+        exportButtons[i].addEventListener('click', function() {
             
-            // Defensive programming: validate the attribute exists
-            if (!targetId) {
-                alert("Configuration Error: Export button is missing a 'data-target' attribute.");
+            event.preventDefault();
+            const targetId = this.getAttribute('data-target');
+            const storeId  = this.getAttribute('data-store');
+            
+            // 1. Validate Architecture
+            const tableElement = document.getElementById(targetId);
+            if (!tableElement || !storeId || !STORES[storeId]) {
+                console.error(`Architecture Error: DOM or Memory link broken for '${storeId}'.`);
+                console.error(`Looking for Table ID: ${targetId}, Found:`, tableElement);
+            return;
+            }
+
+            const state = STORES[storeId];
+            const exportData = state.filtered || state.raw; 
+
+            if (!exportData || exportData.length === 0) {
+                alert("There is no data available to export.");
                 return;
             }
 
-            const tableElement = document.getElementById(targetId);
+            // 2. Strict Schema Filtering (The Fix)
+            // Instead of Object.keys(firstRow), we ask the DOM exactly what the user is allowed to see.
+            const permittedHeaders = extractHeadersFromDOM(tableElement);
+
+            // 3. Map Array-of-Objects to 2D Array using ONLY permitted headers
+            const csv2DArray = new Array(exportData.length);
             
-            // Defensive programming: validate the target exists in the DOM
-            if (!tableElement) {
-                alert(`Configuration Error: Could not find a table with ID '${targetId}'.`);
-                return;
+            for (let r = 0; r < exportData.length; r++) {
+                const rowObj = exportData[r];
+                const rowArr = new Array(permittedHeaders.length);
+                
+                for (let c = 0; c < permittedHeaders.length; c++) {
+                    const key = permittedHeaders[c];
+                    
+                    // Safely extract only the requested property. 
+                    // If the property doesn't exist, default to an empty string to prevent "undefined" in CSV.
+                    rowArr[c] = (rowObj[key] !== null && rowObj[key] !== undefined) ? rowObj[key] : "";
+                }
+                csv2DArray[r] = rowArr;
             }
-            
+
+            // 4. Trigger Export
             const dateStr = new Date().toISOString().slice(0, 10);
             const filename = `${targetId}_report_${dateStr}.csv`;
 
-            exportTableToCSV(tableElement, filename);
+            exportDataArrayToCSV(permittedHeaders, csv2DArray, filename);
         });
     }
 }
